@@ -3,7 +3,7 @@
 
 export const API_CONFIG = {
   // Backend API Base URL - from .env EXPO_PUBLIC_API_BASE_URL
-  API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.0.103:3000/api/v1', // thay đổi theo IP trên máy
+  API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL || '', // thay đổi theo IP trên máy
 
   // API Timeout in milliseconds
   API_TIMEOUT: parseInt(process.env.EXPO_PUBLIC_API_TIMEOUT || '15000', 10),
@@ -14,7 +14,7 @@ export const API_CONFIG = {
 
   // Google OAuth Configuration
   GOOGLE_CLIENT_ID: {
-    web: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '105164387309-03fclhkcheijf96tssf4d0rc52ebcu1s.apps.googleusercontent.com',
+    web: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '',
     ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '',
     android: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '',
   },

@@ -6,7 +6,7 @@ const CURRENT_ENV: Environment = 'development';
 
 export const ENV_CONFIG = {
   development: {
-    apiBaseUrl: 'http://192.168.0.103:3000/api/v1', // thay đổi theo IP trên máy
+    apiBaseUrl: 'http://localhost:3000/api/v1', 
     // For Android Emulator: 'http://10.0.2.2:3000/api/v1'
     // For iOS Simulator: 'http://localhost:3000/api/v1'
     // For Expo Go: Use your machine IP address
