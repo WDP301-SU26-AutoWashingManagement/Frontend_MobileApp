@@ -388,6 +388,62 @@ class AuthService {
       throw new Error(message);
     }
   }
+
+  /**
+   * Update user profile
+   */
+  async updateProfile(
+    updates: { full_name?: string; phone?: string; avatar_url?: string } | FormData
+  ): Promise<User> {
+    try {
+      console.log('[AuthService] updateProfile payload:', updates instanceof FormData ? 'FormData' : updates);
+
+      let response;
+      if (updates instanceof FormData) {
+        // For multipart uploads (avatar file + fields)
+        response = await this.axiosInstance.put<{ data: User }>(
+          '/users/profile',
+          updates,
+          {
+            headers: {
+              // Let axios/native set the correct multipart boundary
+              'Content-Type': 'multipart/form-data',
+            },
+          }
+        );
+      } else {
+        response = await this.axiosInstance.put<{ data: User }>('/users/profile', updates);
+      }
+
+      const updatedUser = response.data.data;
+
+      // Update user in storage
+      await TokenManager.saveUser(updatedUser);
+
+      return updatedUser;
+    } catch (error: any) {
+      console.error('[AuthService] updateProfile error response:', error.response?.status, error.response?.data);
+      const status = error.response?.status;
+      const serverMessage = error.response?.data?.message;
+      const message = serverMessage || (status ? `Server responded with status ${status}` : 'Cập nhật hồ sơ thất bại');
+      throw new Error(message);
+    }
+  }
+
+  /**
+   * Change password
+   */
+  async changePassword(oldPassword: string, newPassword: string): Promise<void> {
+    try {
+      await this.axiosInstance.patch('/users/profile/password', {
+        old_password: oldPassword,
+        new_password: newPassword,
+      });
+    } catch (error: any) {
+      const message = error.response?.data?.message || 'Thay đổi mật khẩu thất bại';
+      throw new Error(message);
+    }
+  }
 }
 
 // Export singleton instance

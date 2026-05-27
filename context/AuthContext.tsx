@@ -12,6 +12,8 @@ interface AuthContextType {
   loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
+  updateProfile: (updates: { full_name?: string; phone?: string; avatar_url?: string } | FormData) => Promise<void>;
+  changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -139,6 +141,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearError = useCallback(() => setError(null), []);
 
+  const updateProfile = useCallback(async (updates: { full_name?: string; phone?: string; avatar_url?: string } | FormData) => {
+    setLoading(true);
+    setError(null);
+    try {
+      console.log('🔐 [AuthContext] Updating profile...');
+      const updatedUser = await authService.updateProfile(updates);
+      console.log('✅ [AuthContext] Profile updated:', updatedUser.email);
+      setUser(updatedUser);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Cập nhật hồ sơ thất bại';
+      console.error('[AuthContext] Update profile error:', errorMsg);
+      console.error(err);
+      setError(errorMsg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const changePassword = useCallback(async (oldPassword: string, newPassword: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      console.log('🔐 [AuthContext] Changing password...');
+      await authService.changePassword(oldPassword, newPassword);
+      console.log('✅ [AuthContext] Password changed successfully');
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Thay đổi mật khẩu thất bại';
+      console.error('[AuthContext] Change password error:', errorMsg);
+      setError(errorMsg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Don't render children until auth is initialized
   if (!isInitialized) {
     return null;
@@ -146,7 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, tokens, loading, error, isAuthenticated, login, register, loginWithGoogle, logout, clearError }}>
+      value={{ user, tokens, loading, error, isAuthenticated, login, register, loginWithGoogle, logout, clearError, updateProfile, changePassword }}>
       {children}
     </AuthContext.Provider>
   );
