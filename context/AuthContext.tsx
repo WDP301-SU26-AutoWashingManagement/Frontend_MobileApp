@@ -12,6 +12,9 @@ interface AuthContextType {
   loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
+  forgotPassword: (email: string) => Promise<void>;
+  verifyOtp: (email: string, otp: string) => Promise<void>;
+  resetPassword: (email: string, otp: string, newPassword: string) => Promise<void>;
   updateProfile: (updates: { full_name?: string; phone?: string; avatar_url?: string } | FormData) => Promise<void>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
 }
@@ -141,6 +144,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearError = useCallback(() => setError(null), []);
 
+  const forgotPassword = useCallback(async (email: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      console.log('🔐 [AuthContext] Forgot password request:', email);
+      await authService.forgotPassword(email);
+      console.log('✅ [AuthContext] Forgot password request sent');
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Yêu cầu cấp lại mật khẩu thất bại';
+      console.error('[AuthContext] Forgot password error:', errorMsg);
+      setError(errorMsg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const verifyOtp = useCallback(async (email: string, otp: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      console.log('🔐 [AuthContext] Verify OTP request:', email);
+      await authService.verifyOtp(email, otp);
+      console.log('✅ [AuthContext] OTP verified');
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Xác minh OTP thất bại';
+      console.error('[AuthContext] Verify OTP error:', errorMsg);
+      setError(errorMsg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const resetPassword = useCallback(async (email: string, otp: string, newPassword: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      console.log('🔐 [AuthContext] Reset password request:', email);
+      await authService.resetPassword(email, otp, newPassword);
+      console.log('✅ [AuthContext] Password reset successful');
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Đặt lại mật khẩu thất bại';
+      console.error('[AuthContext] Reset password error:', errorMsg);
+      setError(errorMsg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const updateProfile = useCallback(async (updates: { full_name?: string; phone?: string; avatar_url?: string } | FormData) => {
     setLoading(true);
     setError(null);
@@ -184,7 +238,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, tokens, loading, error, isAuthenticated, login, register, loginWithGoogle, logout, clearError, updateProfile, changePassword }}>
+      value={{
+        user,
+        tokens,
+        loading,
+        error,
+        isAuthenticated,
+        login,
+        register,
+        loginWithGoogle,
+        logout,
+        clearError,
+        forgotPassword,
+        verifyOtp,
+        resetPassword,
+        updateProfile,
+        changePassword,
+      }}>
       {children}
     </AuthContext.Provider>
   );
