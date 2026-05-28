@@ -3,10 +3,12 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -43,12 +45,34 @@ const REGISTER_INITIAL_STATE = {
   confirmPassword: '',
 };
 
+const FORGOT_PASSWORD_INITIAL_STATE = {
+  email: '',
+  otp: '',
+  newPassword: '',
+  confirmPassword: '',
+};
+
+type ForgotPasswordStep = 'email' | 'otp' | 'reset';
+
 export default function TabTwoScreen() {
   const router = useRouter();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [loginForm, setLoginForm] = useState(LOGIN_INITIAL_STATE);
   const [registerForm, setRegisterForm] = useState(REGISTER_INITIAL_STATE);
-  const { login: authLogin, register: authRegister, loginWithGoogle: authLoginWithGoogle, loading, error, clearError } = useAuth();
+  const [forgotVisible, setForgotVisible] = useState(false);
+  const [forgotStep, setForgotStep] = useState<ForgotPasswordStep>('email');
+  const [forgotForm, setForgotForm] = useState(FORGOT_PASSWORD_INITIAL_STATE);
+  const {
+    login: authLogin,
+    register: authRegister,
+    loginWithGoogle: authLoginWithGoogle,
+    forgotPassword: authForgotPassword,
+    verifyOtp: authVerifyOtp,
+    resetPassword: authResetPassword,
+    loading,
+    error,
+    clearError,
+  } = useAuth();
 
   const isLogin = mode === 'login';
 
@@ -59,6 +83,103 @@ export default function TabTwoScreen() {
   const switchMode = (nextMode: 'login' | 'register') => {
     setMode(nextMode);
     clearError();
+  };
+
+  const openForgotPassword = () => {
+    clearError();
+    setForgotForm((prev) => ({
+      ...FORGOT_PASSWORD_INITIAL_STATE,
+      email: loginForm.email.trim() || registerForm.email.trim() || prev.email,
+    }));
+    setForgotStep('email');
+    setForgotVisible(true);
+  };
+
+  const closeForgotPassword = () => {
+    setForgotVisible(false);
+    setForgotStep('email');
+    setForgotForm(FORGOT_PASSWORD_INITIAL_STATE);
+    clearError();
+  };
+
+  const handleForgotPasswordSubmit = async () => {
+    const email = forgotForm.email.trim();
+    if (!email) {
+      Alert.alert('Thiếu email', 'Vui lòng nhập email để nhận mã OTP.');
+      return;
+    }
+
+    try {
+      await authForgotPassword(email);
+      setForgotStep('otp');
+      Alert.alert('Đã gửi OTP', 'Nếu email tồn tại, mã OTP đã được gửi tới hộp thư của bạn.');
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Không thể gửi OTP';
+      Alert.alert('Lỗi', errorMsg);
+    }
+  };
+
+  const handleVerifyOtpSubmit = async () => {
+    const email = forgotForm.email.trim();
+    const otp = forgotForm.otp.trim();
+
+    if (!otp) {
+      Alert.alert('Thiếu OTP', 'Vui lòng nhập mã OTP gồm 6 ký tự.');
+      return;
+    }
+
+    try {
+      await authVerifyOtp(email, otp);
+      setForgotStep('reset');
+      Alert.alert('OTP hợp lệ', 'Nhập mật khẩu mới để hoàn tất.');
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'OTP không hợp lệ';
+      Alert.alert('Lỗi', errorMsg);
+    }
+  };
+
+  const handleResetPasswordSubmit = async () => {
+    const email = forgotForm.email.trim();
+    const otp = forgotForm.otp.trim();
+    const newPassword = forgotForm.newPassword.trim();
+    const confirmPassword = forgotForm.confirmPassword.trim();
+
+    if (newPassword.length < 6) {
+      Alert.alert('Mật khẩu không hợp lệ', 'Mật khẩu mới phải có ít nhất 6 ký tự.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Mật khẩu không khớp', 'Vui lòng nhập lại đúng mật khẩu mới.');
+      return;
+    }
+
+    try {
+      await authResetPassword(email, otp, newPassword);
+      Alert.alert('Thành công', 'Mật khẩu đã được đặt lại. Vui lòng đăng nhập lại.');
+      closeForgotPassword();
+      setMode('login');
+      setLoginForm((prev) => ({ ...prev, email }));
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Đặt lại mật khẩu thất bại';
+      Alert.alert('Lỗi', errorMsg);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    const email = forgotForm.email.trim();
+    if (!email) {
+      Alert.alert('Thiếu email', 'Vui lòng nhập email trước khi gửi lại OTP.');
+      return;
+    }
+
+    try {
+      await authForgotPassword(email);
+      Alert.alert('Đã gửi lại OTP', 'Mã mới đã được gửi tới email của bạn.');
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Không thể gửi lại OTP';
+      Alert.alert('Lỗi', errorMsg);
+    }
   };
 
   const handleLoginSubmit = async () => {
@@ -236,7 +357,7 @@ export default function TabTwoScreen() {
                     <Text style={styles.rememberLabel}>Ghi nhớ đăng nhập</Text>
                   </Pressable>
 
-                  <Pressable disabled={loading}>
+                  <Pressable onPress={openForgotPassword} disabled={loading}>
                     <Text style={styles.forgotLink}>Quên mật khẩu?</Text>
                   </Pressable>
                 </View>
@@ -353,6 +474,225 @@ export default function TabTwoScreen() {
               </View>
             )}
           </View>
+
+          <Modal visible={forgotVisible} transparent animationType="fade" onRequestClose={closeForgotPassword}>
+            <View style={styles.modalOverlay}>
+              <Pressable style={styles.modalBackdrop} onPress={closeForgotPassword} />
+
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                style={styles.modalKeyboardWrap}>
+                <View style={styles.modalCard}>
+                  <View style={styles.modalHeader}>
+                    <View>
+                      <Text style={styles.modalTitle}>Khôi phục mật khẩu</Text>
+                      <Text style={styles.modalSubtitle}>
+                        {forgotStep === 'email'
+                          ? 'Nhập email để nhận mã OTP'
+                          : forgotStep === 'otp'
+                            ? 'Xác minh mã OTP đã gửi'
+                            : 'Tạo mật khẩu mới cho tài khoản'}
+                      </Text>
+                    </View>
+                    <Pressable onPress={closeForgotPassword} style={styles.modalCloseButton}>
+                      <MaterialCommunityIcons name="close" size={18} color="#0F172A" />
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.stepRow}>
+                    {[
+                      { key: 'email', label: 'Email' },
+                      { key: 'otp', label: 'OTP' },
+                      { key: 'reset', label: 'Mật khẩu mới' },
+                    ].map((step, index) => {
+                      const active = forgotStep === step.key;
+                      const completed =
+                        (step.key === 'email' && forgotStep !== 'email') ||
+                        (step.key === 'otp' && forgotStep === 'reset');
+
+                      return (
+                        <View key={step.key} style={styles.stepItem}>
+                          <View style={[styles.stepDot, active && styles.stepDotActive, completed && styles.stepDotDone]}>
+                            {completed ? (
+                              <MaterialCommunityIcons name="check" size={12} color="#FFFFFF" />
+                            ) : (
+                              <Text style={[styles.stepNumber, active && styles.stepNumberActive]}>{index + 1}</Text>
+                            )}
+                          </View>
+                          <Text style={[styles.stepLabel, active && styles.stepLabelActive]}>{step.label}</Text>
+                          {index < 2 ? <View style={[styles.stepLine, completed && styles.stepLineDone]} /> : null}
+                        </View>
+                      );
+                    })}
+                  </View>
+
+                  <ScrollView
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.modalBody}>
+                    {forgotStep === 'email' ? (
+                      <View style={styles.modalForm}>
+                        <View style={styles.fieldGroup}>
+                          <Text style={styles.label}>Email tài khoản</Text>
+                          <TextInput
+                            value={forgotForm.email}
+                            onChangeText={(email) => setForgotForm((prev) => ({ ...prev, email }))}
+                            placeholder="ban@email.com"
+                            placeholderTextColor="#9CA3AF"
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                            autoComplete="email"
+                            editable={!loading}
+                            style={styles.input}
+                          />
+                        </View>
+
+                        <View style={styles.helperPanel}>
+                          <MaterialCommunityIcons name="email-outline" size={18} color="#0891B2" />
+                          <Text style={styles.helperPanelText}>
+                            Hệ thống sẽ gửi OTP đến email này nếu tài khoản tồn tại.
+                          </Text>
+                        </View>
+
+                        <Pressable
+                          onPress={handleForgotPasswordSubmit}
+                          disabled={loading}
+                          style={({ pressed }) => [
+                            styles.primaryButton,
+                            pressed && !loading && styles.primaryButtonPressed,
+                            loading && styles.primaryButtonDisabled,
+                          ]}>
+                          {loading ? (
+                            <ActivityIndicator color="#FFFFFF" />
+                          ) : (
+                            <Text style={styles.primaryButtonText}>Gửi mã OTP</Text>
+                          )}
+                        </Pressable>
+                      </View>
+                    ) : null}
+
+                    {forgotStep === 'otp' ? (
+                      <View style={styles.modalForm}>
+                        <View style={styles.fieldGroup}>
+                          <Text style={styles.label}>Email</Text>
+                          <TextInput
+                            value={forgotForm.email}
+                            editable={false}
+                            style={[styles.input, styles.inputDisabled]}
+                          />
+                        </View>
+
+                        <View style={styles.fieldGroup}>
+                          <Text style={styles.label}>Mã OTP</Text>
+                          <TextInput
+                            value={forgotForm.otp}
+                            onChangeText={(otp) => setForgotForm((prev) => ({ ...prev, otp }))}
+                            placeholder="123456"
+                            placeholderTextColor="#9CA3AF"
+                            keyboardType="number-pad"
+                            maxLength={6}
+                            autoComplete="one-time-code"
+                            editable={!loading}
+                            style={styles.input}
+                          />
+                        </View>
+
+                        <View style={styles.inlineActions}>
+                          <Pressable onPress={handleResendOtp} disabled={loading} style={styles.secondaryButton}>
+                            <Text style={styles.secondaryButtonText}>Gửi lại OTP</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={handleVerifyOtpSubmit}
+                            disabled={loading}
+                            style={({ pressed }) => [
+                              styles.primaryButton,
+                              styles.inlinePrimaryButton,
+                              pressed && !loading && styles.primaryButtonPressed,
+                              loading && styles.primaryButtonDisabled,
+                            ]}>
+                            {loading ? (
+                              <ActivityIndicator color="#FFFFFF" />
+                            ) : (
+                              <Text style={styles.primaryButtonText}>Xác minh</Text>
+                            )}
+                          </Pressable>
+                        </View>
+                      </View>
+                    ) : null}
+
+                    {forgotStep === 'reset' ? (
+                      <View style={styles.modalForm}>
+                        <View style={styles.fieldGroup}>
+                          <Text style={styles.label}>Email</Text>
+                          <TextInput
+                            value={forgotForm.email}
+                            editable={false}
+                            style={[styles.input, styles.inputDisabled]}
+                          />
+                        </View>
+
+                        <View style={styles.fieldGroup}>
+                          <Text style={styles.label}>Mã OTP</Text>
+                          <TextInput
+                            value={forgotForm.otp}
+                            editable={false}
+                            style={[styles.input, styles.inputDisabled]}
+                          />
+                        </View>
+
+                        <View style={styles.fieldGroup}>
+                          <Text style={styles.label}>Mật khẩu mới</Text>
+                          <TextInput
+                            value={forgotForm.newPassword}
+                            onChangeText={(newPassword) =>
+                              setForgotForm((prev) => ({ ...prev, newPassword }))
+                            }
+                            placeholder="••••••••"
+                            placeholderTextColor="#9CA3AF"
+                            secureTextEntry
+                            autoComplete="new-password"
+                            editable={!loading}
+                            style={styles.input}
+                          />
+                        </View>
+
+                        <View style={styles.fieldGroup}>
+                          <Text style={styles.label}>Nhập lại mật khẩu mới</Text>
+                          <TextInput
+                            value={forgotForm.confirmPassword}
+                            onChangeText={(confirmPassword) =>
+                              setForgotForm((prev) => ({ ...prev, confirmPassword }))
+                            }
+                            placeholder="••••••••"
+                            placeholderTextColor="#9CA3AF"
+                            secureTextEntry
+                            autoComplete="new-password"
+                            editable={!loading}
+                            style={styles.input}
+                          />
+                        </View>
+
+                        <Pressable
+                          onPress={handleResetPasswordSubmit}
+                          disabled={loading}
+                          style={({ pressed }) => [
+                            styles.primaryButton,
+                            pressed && !loading && styles.primaryButtonPressed,
+                            loading && styles.primaryButtonDisabled,
+                          ]}>
+                          {loading ? (
+                            <ActivityIndicator color="#FFFFFF" />
+                          ) : (
+                            <Text style={styles.primaryButtonText}>Đặt lại mật khẩu</Text>
+                          )}
+                        </Pressable>
+                      </View>
+                    ) : null}
+                  </ScrollView>
+                </View>
+              </KeyboardAvoidingView>
+            </View>
+          </Modal>
 
           {/* Benefits Section */}
           <View style={styles.benefitsSection}>
@@ -654,6 +994,189 @@ const styles = StyleSheet.create({
     color: '#06B6D4',
     fontSize: 12,
     fontWeight: '700',
+  },
+
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(2, 6, 23, 0.68)',
+  },
+
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+
+  modalKeyboardWrap: {
+    width: '100%',
+  },
+
+  modalCard: {
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    gap: 14,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.24,
+    shadowRadius: 30,
+    elevation: 12,
+  },
+
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+
+  modalTitle: {
+    color: '#0F172A',
+    fontSize: 20,
+    fontWeight: '900',
+  },
+
+  modalSubtitle: {
+    color: '#64748B',
+    fontSize: 12,
+    marginTop: 4,
+    lineHeight: 18,
+  },
+
+  modalCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingTop: 4,
+  },
+
+  stepItem: {
+    flex: 1,
+    alignItems: 'center',
+    position: 'relative',
+  },
+
+  stepDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 999,
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+
+  stepDotActive: {
+    backgroundColor: '#06B6D4',
+  },
+
+  stepDotDone: {
+    backgroundColor: '#0EA5E9',
+  },
+
+  stepNumber: {
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  stepNumberActive: {
+    color: '#FFFFFF',
+  },
+
+  stepLabel: {
+    color: '#94A3B8',
+    fontSize: 10,
+    marginTop: 8,
+    textAlign: 'center',
+    fontWeight: '700',
+  },
+
+  stepLabelActive: {
+    color: '#0F172A',
+  },
+
+  stepLine: {
+    position: 'absolute',
+    top: 12,
+    left: '50%',
+    right: '-50%',
+    height: 2,
+    backgroundColor: '#CBD5E1',
+    zIndex: 0,
+  },
+
+  stepLineDone: {
+    backgroundColor: '#0EA5E9',
+  },
+
+  modalBody: {
+    gap: 12,
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+
+  modalForm: {
+    gap: 12,
+  },
+
+  helperPanel: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: '#ECFEFF',
+    borderWidth: 1,
+    borderColor: '#A5F3FC',
+  },
+
+  helperPanelText: {
+    flex: 1,
+    color: '#0F172A',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  inputDisabled: {
+    backgroundColor: '#F1F5F9',
+    color: '#64748B',
+  },
+
+  inlineActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+
+  secondaryButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+
+  secondaryButtonText: {
+    color: '#0F172A',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  inlinePrimaryButton: {
+    flex: 1,
+    marginTop: 0,
   },
 
   primaryButton: {

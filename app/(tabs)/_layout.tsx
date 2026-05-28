@@ -9,7 +9,7 @@ import { useAuth } from '@/hooks/useAuthService';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
-  const { isAuthenticated } = useAuth(); // ✅ Lấy từ context, tự động update khi login/logout
+  const { isAuthenticated } = useAuth(); //  Lấy từ context, tự động update khi login/logout
 
   return (
     <Tabs
