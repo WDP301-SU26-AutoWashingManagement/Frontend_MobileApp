@@ -106,8 +106,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      console.log('🔐 [AuthContext] Google login attempt');
+console.log('🔐 [AuthContext] Google login attempt');
       const result = await authService.loginWithGoogle({ idToken });
+      console.log('🔐 [AuthContext] Google idToken received (len):', idToken?.length);
       console.log('✅ [AuthContext] Google login successful');
       setUser(result.user);
       setTokens(result.tokens);
