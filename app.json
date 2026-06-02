@@ -2,6 +2,7 @@
   "expo": {
     "name": "AutoWash",
     "slug": "AutoWash",
+    "owner": "thai5236",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -9,7 +10,8 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.autowash.mobile"
     },
     "android": {
       "adaptiveIcon": {
@@ -40,7 +42,8 @@
         }
       ],
       "expo-video",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

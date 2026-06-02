@@ -292,7 +292,8 @@ class AuthService {
 
       return { user, tokens };
     } catch (error: any) {
-      const message = error.response?.data?.message || 'Đăng nhập Google thất bại';
+      const message = error.response?.data?.message || error.message || 'Đăng nhập Google thất bại';
+      console.log('🔐 [AuthService] loginWithGoogle error response:', error.response?.status, error.response?.data);
       throw new Error(message);
     }
   }
@@ -402,7 +403,7 @@ class AuthService {
       if (updates instanceof FormData) {
         // For multipart uploads (avatar file + fields)
         response = await this.axiosInstance.put<{ data: User }>(
-          '/users/profile',
+          '/profile',
           updates,
           {
             headers: {
@@ -412,7 +413,7 @@ class AuthService {
           }
         );
       } else {
-        response = await this.axiosInstance.put<{ data: User }>('/users/profile', updates);
+        response = await this.axiosInstance.put<{ data: User }>('/profile', updates);
       }
 
       const updatedUser = response.data.data;
@@ -435,7 +436,7 @@ class AuthService {
    */
   async changePassword(oldPassword: string, newPassword: string): Promise<void> {
     try {
-      await this.axiosInstance.patch('/users/profile/password', {
+      await this.axiosInstance.patch('/profile/password', {
         old_password: oldPassword,
         new_password: newPassword,
       });

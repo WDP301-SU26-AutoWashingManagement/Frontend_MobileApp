@@ -1,7 +1,9 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { makeRedirectUri, Prompt } from 'expo-auth-session';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,8 +16,19 @@ import {
   Text,
   TextInput,
   View,
+  Linking,
 } from 'react-native';
+import GoogleSignInButton from '../../components/auth/GoogleSignInButton';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
+// Use the SessionUrlProvider to build the proxied auth.expo.io start URL when
+// running in Expo Go. This avoids exp:// redirect_uri errors from providers
+// that require allowlisted HTTPS redirect URLs (like Google).
+import sessionUrlProvider from 'expo-auth-session/build/SessionUrlProvider';
+import { API_CONFIG, FEATURES } from '../../config/app.config';
 import { useAuth } from '../../hooks/useAuthService';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const BENEFITS = [
   'Đặt lịch rửa xe trong vài chạm',
@@ -75,6 +88,33 @@ export default function TabTwoScreen() {
   } = useAuth();
 
   const isLogin = mode === 'login';
+  const isExpoGo = Constants.appOwnership === 'expo';
+  const showGoogleLogin = FEATURES.ENABLE_GOOGLE_LOGIN && Platform.OS !== 'web';
+  const projectNameForProxy = '@thai5236/AutoWash';
+  const returnUrl = makeRedirectUri({ path: 'oauthredirect' });
+  let proxyRedirectUri = returnUrl;
+  if (isExpoGo) {
+    try {
+      proxyRedirectUri = sessionUrlProvider.getRedirectUrl({ projectNameForProxy, urlPath: 'oauthredirect' });
+    } catch (e) {
+      // If we cannot build the proxy redirect URL, keep the default redirectUri
+      // so app doesn't crash — we'll log the error to help debugging.
+      // eslint-disable-next-line no-console
+      console.warn('Could not construct proxy redirect URL, falling back to app return URL', e);
+    }
+  }
+
+  const [request] = Google.useAuthRequest({
+    clientId: isExpoGo ? API_CONFIG.GOOGLE_CLIENT_ID.web || undefined : undefined,
+    webClientId: API_CONFIG.GOOGLE_CLIENT_ID.web || undefined,
+    iosClientId: isExpoGo ? undefined : API_CONFIG.GOOGLE_CLIENT_ID.ios || undefined,
+    androidClientId: isExpoGo ? undefined : API_CONFIG.GOOGLE_CLIENT_ID.android || undefined,
+    redirectUri: proxyRedirectUri,
+    selectAccount: true,
+    prompt: Prompt.SelectAccount,
+    scopes: ['openid', 'profile', 'email'],
+    responseType: 'id_token',
+  });
 
   const passwordsMatch =
     registerForm.confirmPassword.length > 0 &&
@@ -229,13 +269,82 @@ export default function TabTwoScreen() {
   };
 
   const handleGoogleLogin = async () => {
+    if (!showGoogleLogin) {
+      Alert.alert('Không hỗ trợ', 'Google Sign-In không khả dụng trên nền tảng này.');
+      return;
+    }
+
     try {
-      Alert.alert('Chủ ý', 'Cần cài đặt Google Sign-In SDK. Xem tài liệu @react-native-google-signin/google-signin');
+      if (!request?.url) {
+        Alert.alert('Đang tải', 'Vui lòng đợi Google Sign-In khởi tạo xong rồi thử lại.');
+        return;
+      }
+
+      const startUrl = sessionUrlProvider.getStartUrl(request.url, returnUrl, projectNameForProxy);
+
+      // eslint-disable-next-line no-console
+      console.log('Auth startUrl:', startUrl);
+      // eslint-disable-next-line no-console
+      console.log('Auth request.url:', request.url);
+      // eslint-disable-next-line no-console
+      console.log('Auth proxyRedirectUri:', proxyRedirectUri);
+      // eslint-disable-next-line no-console
+      console.log('Auth returnUrl:', returnUrl);
+
+      const result = await WebBrowser.openAuthSessionAsync(startUrl, returnUrl);
+
+      if (result.type !== 'success') {
+        return;
+      }
+
+      const parsed = request.parseReturnUrl(result.url);
+      console.log('🔐 [GoogleLogin] result.url:', result.url);
+      console.log('🔐 [GoogleLogin] parsed:', parsed);
+      if (parsed.type !== 'success') {
+        Alert.alert('Lỗi', 'Google trả về lỗi đăng nhập. Vui lòng thử lại.');
+        return;
+      }
+
+      const idToken =
+        parsed.params?.id_token ||
+        parsed.params?.idToken ||
+        parsed.authentication?.idToken ||
+        null;
+
+      if (!idToken) {
+        Alert.alert('Lỗi', 'Không lấy được Google ID Token');
+        return;
+      }
+
+      await authLoginWithGoogle(idToken);
+      setMode('login');
+      setLoginForm(LOGIN_INITIAL_STATE);
+      router.replace('/(tabs)');
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Đăng nhập Google thất bại';
       Alert.alert('Lỗi', errorMsg);
     }
   };
+
+  // Debug: log incoming deep links and auth response changes to diagnose
+  // why the app might not receive the token after returning from auth.expo.io.
+  useEffect(() => {
+    const onUrl = ({ url }: { url: string }) => {
+      // eslint-disable-next-line no-console
+      console.log('[Linking] incoming url:', url);
+      if (__DEV__) {
+        try {
+          Alert.alert('Incoming deep link', url);
+        } catch {}
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', onUrl);
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   return (
     <View style={styles.screen}>
@@ -374,6 +483,27 @@ export default function TabTwoScreen() {
                     {loading ? 'Đang xử lý...' : 'Đăng nhập'}
                   </Text>
                 </Pressable>
+
+                {showGoogleLogin ? (
+                  <>
+                    <View style={styles.dividerRow}>
+                      <View style={styles.dividerLine} />
+                      <Text style={styles.dividerText}>hoặc</Text>
+                      <View style={styles.dividerLine} />
+                    </View>
+
+                    <GoogleSignInButton
+                      onPress={handleGoogleLogin}
+                      disabled={!request || loading}
+                      loading={loading}
+                      label={!request ? 'Đang chuẩn bị...' : 'Đăng nhập với Google'}
+                    />
+                  </>
+                ) : FEATURES.ENABLE_GOOGLE_LOGIN ? (
+                  <Text style={styles.googleHint}>
+                    Đăng nhập Google chỉ khả dụng trong native dev build, không phải Expo Go.
+                  </Text>
+                ) : null}
               </View>
             ) : (
               <View style={styles.formBlock}>
@@ -946,6 +1076,33 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontSize: 11,
     marginTop: 2,
+  },
+
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginVertical: 2,
+  },
+
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+
+  dividerText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+
+  googleHint: {
+    marginTop: 12,
+    fontSize: 12,
+    color: '#94A3B8',
+    textAlign: 'center',
   },
 
   errorText: {

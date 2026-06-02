@@ -175,7 +175,7 @@ class VehicleService {
   }
 
   async getCurrentCustomerId(): Promise<string> {
-    const response = await this.axiosInstance.get<ApiSuccessResponse<UserProfileResponse>>('/users/profile');
+    const response = await this.axiosInstance.get<ApiSuccessResponse<UserProfileResponse>>('/profile');
     const profile = response.data.data;
 
     if (profile.role !== 'customer' || !profile.role_data?._id) {
