@@ -1,20 +1,22 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView, Modal, Platform,
   Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Vehicle, VehicleType } from '@/services/vehicleService';
+import vehicleService, { Vehicle } from '@/services/vehicleService';
 
 export type VehicleFormState = {
-  plate_number: string;
-  brand: string;
+  vehicle_class_id: string;
+  model_id: string;
+  license_plate: string;
   vehicle_model: string;
-  vehicle_type: VehicleType;
+  fuel_type: string;
+  color: string;
 };
 
 export const EMPTY_VEHICLE_FORM: VehicleFormState = {
-  plate_number: '', brand: '', vehicle_model: '', vehicle_type: 'car',
+  vehicle_class_id: '', model_id: '', license_plate: '', vehicle_model: '', fuel_type: '', color: ''
 };
 
 type ModalVehicalProps = {
@@ -49,7 +51,7 @@ function FieldInput({
           onChangeText={onChangeText}
           placeholder={placeholder}
           placeholderTextColor="#94A3B8"
-          autoCapitalize={autoCapitalize || 'words'}
+          autoCapitalize={autoCapitalize || 'none'}
         />
       </View>
     </View>
@@ -73,7 +75,33 @@ export default function ModalVehical({
   visible, submitting, editingVehicle, form, onClose, onSubmit, onChangeForm,
 }: ModalVehicalProps) {
   const isEdit = !!editingVehicle;
-  const accentColor = form.vehicle_type === 'car' ? CYAN : '#8B5CF6';
+  const accentColor = CYAN;
+  
+  const [classes, setClasses] = useState<any[]>([]);
+  const [models, setModels] = useState<any[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      loadOptions();
+    }
+  }, [visible]);
+
+  const loadOptions = async () => {
+    setLoadingOptions(true);
+    try {
+      const [fetchedClasses, fetchedModels] = await Promise.all([
+        vehicleService.getVehicleClasses(),
+        vehicleService.getVehicleModels(),
+      ]);
+      setClasses(fetchedClasses || []);
+      setModels(fetchedModels || []);
+    } catch (e) {
+      console.log('Error fetching options', e);
+    } finally {
+      setLoadingOptions(false);
+    }
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -90,16 +118,14 @@ export default function ModalVehical({
             <View style={styles.header}>
               <View style={styles.headerLeft}>
                 <View style={[styles.headerIcon, { backgroundColor: accentColor + '18' }]}>
-                  <MaterialCommunityIcons
-                    name={form.vehicle_type === 'car' ? 'car-outline' : 'motorbike'}
-                    size={18} color={accentColor} />
+                  <MaterialCommunityIcons name="car-outline" size={18} color={accentColor} />
                 </View>
                 <View>
                   <Text style={styles.headerTitle}>
                     {isEdit ? 'Chỉnh sửa phương tiện' : 'Thêm phương tiện'}
                   </Text>
                   <Text style={styles.headerSub}>
-                    {isEdit ? `${editingVehicle.brand} ${editingVehicle.vehicle_model}` : 'Điền thông tin xe của bạn'}
+                    Điền thông tin xe của bạn
                   </Text>
                 </View>
               </View>
@@ -114,52 +140,73 @@ export default function ModalVehical({
               style={styles.body}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}>
+              
+              {loadingOptions ? (
+                 <ActivityIndicator size="small" color={CYAN} style={{ marginVertical: 20 }} />
+              ) : (
+                <>
+                  <View style={styles.typeSection}>
+                    <Text style={fieldStyles.label}>Loại xe (Class)</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeRow}>
+                      {classes.map(c => (
+                        <Pressable 
+                          key={c._id} 
+                          onPress={() => onChangeForm(prev => ({ ...prev, vehicle_class_id: c._id }))}
+                          style={[styles.chip, form.vehicle_class_id === c._id && styles.chipSelected]}>
+                          <Text style={[styles.chipText, form.vehicle_class_id === c._id && styles.chipTextSelected]}>{c.class_name}</Text>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
 
-              {/* Vehicle type selector */}
-              <View style={styles.typeSection}>
-                <Text style={fieldStyles.label}>Loại xe</Text>
-                <View style={styles.typeRow}>
-                  <TypeCard
-                    icon="car"
-                    label="Xe ô tô"
-                    sublabel="Sedan, SUV, MPV..."
-                    color={CYAN}
-                    selected={form.vehicle_type === 'car'}
-                    onPress={() => onChangeForm(c => ({ ...c, vehicle_type: 'car' }))}
-                  />
-                  <TypeCard
-                    icon="motorbike"
-                    label="Xe mô tô"
-                    sublabel="Xe máy, scooter..."
-                    color="#8B5CF6"
-                    selected={form.vehicle_type === 'motorbike'}
-                    onPress={() => onChangeForm(c => ({ ...c, vehicle_type: 'motorbike' }))}
-                  />
-                </View>
-              </View>
+                  <View style={styles.typeSection}>
+                    <Text style={fieldStyles.label}>Hãng/Mẫu xe (Model)</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeRow}>
+                      {models.map(m => (
+                        <Pressable 
+                          key={m._id} 
+                          onPress={() => onChangeForm(prev => ({ ...prev, model_id: m._id }))}
+                          style={[styles.chip, form.model_id === m._id && styles.chipSelected]}>
+                          <Text style={[styles.chipText, form.model_id === m._id && styles.chipTextSelected]}>{m.model_name}</Text>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
 
-              <FieldInput
-                label="Biển số xe"
-                value={form.plate_number}
-                onChangeText={(t) => onChangeForm(c => ({ ...c, plate_number: t }))}
-                placeholder="VD: 51G-123.45"
-                autoCapitalize="characters"
-                icon="card-account-details-outline"
-              />
-              <FieldInput
-                label="Hãng xe"
-                value={form.brand}
-                onChangeText={(t) => onChangeForm(c => ({ ...c, brand: t }))}
-                placeholder="VD: Toyota, Honda..."
-                icon="factory"
-              />
-              <FieldInput
-                label="Dòng xe"
-                value={form.vehicle_model}
-                onChangeText={(t) => onChangeForm(c => ({ ...c, vehicle_model: t }))}
-                placeholder="VD: Vios, Civic..."
-                icon="car-info"
-              />
+                  <FieldInput
+                    label="Biển số xe"
+                    value={form.license_plate}
+                    onChangeText={(t) => onChangeForm(c => ({ ...c, license_plate: t }))}
+                    placeholder="VD: 51G-123.45"
+                    autoCapitalize="characters"
+                    icon="card-account-details-outline"
+                  />
+                  
+                  <FieldInput
+                    label="Phiên bản xe (Ví dụ: Airblade 125, Vios G)"
+                    value={form.vehicle_model}
+                    onChangeText={(t) => onChangeForm(c => ({ ...c, vehicle_model: t }))}
+                    placeholder="VD: Vios G 2022"
+                    icon="car-info"
+                  />
+
+                  <FieldInput
+                    label="Loại nhiên liệu"
+                    value={form.fuel_type}
+                    onChangeText={(t) => onChangeForm(c => ({ ...c, fuel_type: t }))}
+                    placeholder="VD: Xăng, Dầu, Điện"
+                    icon="gas-station"
+                  />
+
+                  <FieldInput
+                    label="Màu sắc"
+                    value={form.color}
+                    onChangeText={(t) => onChangeForm(c => ({ ...c, color: t }))}
+                    placeholder="VD: Đen, Trắng"
+                    icon="palette"
+                  />
+                </>
+              )}
 
               {/* Action buttons */}
               <View style={styles.actions}>
@@ -194,50 +241,6 @@ export default function ModalVehical({
   );
 }
 
-function TypeCard({ icon, label, sublabel, color, selected, onPress }: {
-  icon: string; label: string; sublabel: string;
-  color: string; selected: boolean; onPress: () => void;
-}) {
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        typeStyles.card,
-        selected && [typeStyles.cardSelected, { borderColor: color, backgroundColor: color + '0D' }],
-        pressed && { opacity: 0.8 },
-      ]}
-      onPress={onPress}>
-      <View style={[typeStyles.iconBox, { backgroundColor: selected ? color + '20' : '#F1F5F9' }]}>
-        <MaterialCommunityIcons name={icon as any} size={24} color={selected ? color : GRAY} />
-      </View>
-      <Text style={[typeStyles.label, selected && { color }]}>{label}</Text>
-      <Text style={typeStyles.sublabel}>{sublabel}</Text>
-      {selected && (
-        <View style={[typeStyles.checkDot, { backgroundColor: color }]}>
-          <MaterialCommunityIcons name="check" size={10} color="#fff" />
-        </View>
-      )}
-    </Pressable>
-  );
-}
-
-const typeStyles = StyleSheet.create({
-  card: {
-    flex: 1, alignItems: 'center', gap: 4,
-    padding: 14, borderRadius: 14,
-    borderWidth: 1.5, borderColor: '#E2E8F0',
-    backgroundColor: '#FAFAFA', position: 'relative',
-  },
-  cardSelected: { backgroundColor: '#fff' },
-  iconBox: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
-  label: { fontSize: 13, fontWeight: '800', color: DARK },
-  sublabel: { fontSize: 11, color: GRAY, textAlign: 'center' },
-  checkDot: {
-    position: 'absolute', top: 8, right: 8,
-    width: 18, height: 18, borderRadius: 9,
-    alignItems: 'center', justifyContent: 'center',
-  },
-});
-
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end' },
   sheet: {
@@ -266,7 +269,23 @@ const styles = StyleSheet.create({
   },
   body: { padding: 20 },
   typeSection: { marginBottom: 16 },
-  typeRow: { flexDirection: 'row', gap: 10 },
+  typeRow: { flexDirection: 'row', gap: 10, paddingBottom: 4 },
+  chip: {
+    paddingHorizontal: 16, paddingVertical: 8,
+    borderRadius: 20, backgroundColor: '#FAFAFA',
+    borderWidth: 1, borderColor: '#E2E8F0',
+    marginRight: 8,
+  },
+  chipSelected: {
+    backgroundColor: CYAN + '15',
+    borderColor: CYAN,
+  },
+  chipText: {
+    fontSize: 13, fontWeight: '600', color: GRAY,
+  },
+  chipTextSelected: {
+    color: CYAN,
+  },
   actions: { flexDirection: 'row', gap: 10, marginTop: 8 },
   cancelBtn: {
     flex: 0.38, paddingVertical: 14, borderRadius: 14,
