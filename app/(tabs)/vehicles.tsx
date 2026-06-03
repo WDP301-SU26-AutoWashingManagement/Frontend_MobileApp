@@ -66,7 +66,14 @@ export default function VehiclesScreen() {
 
   const openEditModal = (vehicle: Vehicle) => {
     setEditingVehicle(vehicle);
-    setForm({ plate_number: vehicle.plate_number, brand: vehicle.brand, vehicle_model: vehicle.vehicle_model, vehicle_type: vehicle.vehicle_type });
+    setForm({ 
+      license_plate: vehicle.license_plate || '', 
+      vehicle_class_id: typeof vehicle.vehicle_class_id === 'object' ? vehicle.vehicle_class_id?._id : vehicle.vehicle_class_id, 
+      model_id: typeof vehicle.model_id === 'object' ? vehicle.model_id?._id : vehicle.model_id, 
+      vehicle_model: vehicle.vehicle_model || '',
+      fuel_type: vehicle.fuel_type || '',
+      color: vehicle.color || ''
+    });
     setModalVisible(true);
   };
 
@@ -78,7 +85,7 @@ export default function VehiclesScreen() {
   };
 
   const handleSubmitVehicle = async () => {
-    if (!form.plate_number.trim() || !form.brand.trim() || !form.vehicle_model.trim()) {
+    if (!form.license_plate.trim() || !form.vehicle_model.trim() || !form.fuel_type.trim() || !form.color.trim() || !form.vehicle_class_id || !form.model_id) {
       Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin phương tiện');
       return;
     }
@@ -90,19 +97,23 @@ export default function VehiclesScreen() {
     try {
       if (editingVehicle) {
         await vehicleService.updateVehicle(editingVehicle._id, {
-          plate_number: form.plate_number.trim().toUpperCase(),
-          brand: form.brand.trim(),
+          license_plate: form.license_plate.trim().toUpperCase(),
+          vehicle_class_id: form.vehicle_class_id,
+          model_id: form.model_id,
           vehicle_model: form.vehicle_model.trim(),
-          vehicle_type: form.vehicle_type,
+          fuel_type: form.fuel_type.trim(),
+          color: form.color.trim(),
         });
         Alert.alert('Thành công', 'Cập nhật phương tiện thành công');
       } else {
         await vehicleService.createVehicle({
           customer_id: customerId!,
-          plate_number: form.plate_number.trim().toUpperCase(),
-          brand: form.brand.trim(),
+          license_plate: form.license_plate.trim().toUpperCase(),
+          vehicle_class_id: form.vehicle_class_id,
+          model_id: form.model_id,
           vehicle_model: form.vehicle_model.trim(),
-          vehicle_type: form.vehicle_type,
+          fuel_type: form.fuel_type.trim(),
+          color: form.color.trim(),
         });
         Alert.alert('Thành công', 'Thêm phương tiện thành công');
       }
@@ -121,7 +132,7 @@ export default function VehiclesScreen() {
   const handleDeleteVehicle = (vehicle: Vehicle) => {
     Alert.alert(
       'Xóa phương tiện',
-      `Bạn có muốn xóa ${vehicle.brand} ${vehicle.vehicle_model}?`,
+      `Bạn có muốn xóa xe ${vehicle.license_plate}?`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
@@ -142,18 +153,27 @@ export default function VehiclesScreen() {
     );
   };
 
-  const getVehicleIcon = (type: Vehicle['vehicle_type']) => type === 'car' ? 'car' : 'motorbike';
-  const getVehicleTypeLabel = (type: Vehicle['vehicle_type']) => type === 'car' ? 'Xe ô tô' : 'Xe mô tô';
-  const getVehicleColor = (type: Vehicle['vehicle_type']) => type === 'car' ? CYAN : '#8B5CF6';
+  const getVehicleIcon = (classInfo: any) => {
+    const name = typeof classInfo === 'object' ? classInfo?.class_name : '';
+    return name && name.toLowerCase().includes('mô tô') ? 'motorbike' : 'car';
+  };
+  const getVehicleColor = (classInfo: any) => {
+    const name = typeof classInfo === 'object' ? classInfo?.class_name : '';
+    return name && name.toLowerCase().includes('mô tô') ? '#8B5CF6' : CYAN;
+  };
 
-  const formatDate = (value: string) => {
+  const formatDate = (value?: string) => {
+    if (!value) return 'N/A';
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString('vi-VN');
   };
 
   const renderVehicleItem = ({ item, index }: { item: Vehicle; index: number }) => {
-    const color = getVehicleColor(item.vehicle_type);
+    const color = getVehicleColor(item.vehicle_class_id);
     const isDeleting = deletingId === item._id;
+    const modelName = typeof item.model_id === 'object' ? item.model_id?.model_name : '';
+    const className = typeof item.vehicle_class_id === 'object' ? item.vehicle_class_id?.class_name : 'Loại xe';
+
     return (
       <View style={[styles.card, isDeleting && styles.cardDeleting]}>
         {/* Color accent bar */}
@@ -163,17 +183,17 @@ export default function VehiclesScreen() {
           {/* Top row */}
           <View style={styles.cardTop}>
             <View style={[styles.vehicleIconBox, { backgroundColor: color + '18' }]}>
-              <MaterialCommunityIcons name={getVehicleIcon(item.vehicle_type) as any} size={26} color={color} />
+              <MaterialCommunityIcons name={getVehicleIcon(item.vehicle_class_id) as any} size={26} color={color} />
             </View>
             <View style={styles.vehicleInfo}>
-              <Text style={styles.vehicleName}>{item.brand} {item.vehicle_model}</Text>
+              <Text style={styles.vehicleName}>{modelName ? `${modelName} ${item.vehicle_model}` : item.vehicle_model}</Text>
               <View style={styles.plateRow}>
                 <MaterialCommunityIcons name="card-account-details-outline" size={12} color={GRAY} />
-                <Text style={styles.vehiclePlate}>{item.plate_number}</Text>
+                <Text style={styles.vehiclePlate}>{item.license_plate}</Text>
               </View>
             </View>
             <View style={[styles.typeBadge, { backgroundColor: color + '15', borderColor: color + '30' }]}>
-              <Text style={[styles.typeBadgeText, { color }]}>{getVehicleTypeLabel(item.vehicle_type)}</Text>
+              <Text style={[styles.typeBadgeText, { color }]}>{className}</Text>
             </View>
           </View>
 
@@ -185,7 +205,7 @@ export default function VehiclesScreen() {
             <View style={styles.detailItem}>
               <MaterialCommunityIcons name="calendar-outline" size={13} color={GRAY} />
               <Text style={styles.detailLabel}>Ngày tạo</Text>
-              <Text style={styles.detailValue}>{formatDate(item.created_at)}</Text>
+              <Text style={styles.detailValue}>{formatDate(item.createdAt || item.created_at)}</Text>
             </View>
             <View style={styles.detailSep} />
             <View style={styles.detailItem}>

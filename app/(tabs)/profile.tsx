@@ -153,7 +153,7 @@ export default function ProfileScreen() {
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Text style={styles.statValue}>
-                {user?.created_at ? new Date(user.created_at).toLocaleDateString('vi-VN', { month: 'short', year: 'numeric' }) : '—'}
+                {(user as any)?.createdAt || user?.created_at ? new Date((user as any)?.createdAt || user?.created_at || '').toLocaleDateString('vi-VN', { month: 'short', year: 'numeric' }) : '—'}
               </Text>
               <Text style={styles.statLabel}>Tham gia</Text>
             </View>
@@ -176,7 +176,7 @@ export default function ProfileScreen() {
             <InfoRow
               icon="calendar-outline"
               label="Ngày tham gia"
-              value={user?.created_at ? new Date(user.created_at).toLocaleDateString('vi-VN') : 'N/A'}
+              value={(user as any)?.createdAt || user?.created_at ? new Date((user as any)?.createdAt || user?.created_at || '').toLocaleDateString('vi-VN') : 'N/A'}
             />
           </View>
         </View>

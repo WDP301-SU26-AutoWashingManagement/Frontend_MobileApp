@@ -8,17 +8,19 @@ const API_TIMEOUT = API_CONFIG.API_TIMEOUT;
 const ACCESS_TOKEN_KEY = '@auth_access_token';
 const REFRESH_TOKEN_KEY = '@auth_refresh_token';
 
-export type VehicleType = 'motorbike' | 'car';
-
 export interface Vehicle {
   _id: string;
-  customer_id: string;
-  plate_number: string;
-  vehicle_type: VehicleType;
-  brand: string;
+  customer_id: string | any;
+  vehicle_class_id: string | any;
+  model_id: string | any;
+  license_plate: string;
   vehicle_model: string;
-  created_at: string;
-  updated_at: string;
+  fuel_type: string;
+  color: string;
+  created_at?: string;
+  updated_at?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface VehicleListResponse {
@@ -49,17 +51,21 @@ interface UserProfileResponse {
 
 export interface CreateVehicleRequest {
   customer_id: string;
-  plate_number: string;
-  brand: string;
+  vehicle_class_id: string;
+  model_id: string;
+  license_plate: string;
   vehicle_model: string;
-  vehicle_type: VehicleType;
+  fuel_type: string;
+  color: string;
 }
 
 export interface UpdateVehicleRequest {
-  plate_number?: string;
-  brand?: string;
+  vehicle_class_id?: string;
+  model_id?: string;
+  license_plate?: string;
   vehicle_model?: string;
-  vehicle_type?: VehicleType;
+  fuel_type?: string;
+  color?: string;
 }
 
 class VehicleService {
@@ -213,6 +219,17 @@ class VehicleService {
 
   async deleteVehicle(vehicleId: string): Promise<void> {
     await this.axiosInstance.delete(`/vehicles/${vehicleId}`);
+  }
+
+  async getVehicleClasses() {
+    const response = await this.axiosInstance.get<{ success: boolean; data: { docs: any[] } | any[] }>('/vehicle-classes');
+    // Handle both paginated and non-paginated responses just in case
+    return Array.isArray(response.data.data) ? response.data.data : response.data.data?.docs || [];
+  }
+
+  async getVehicleModels() {
+    const response = await this.axiosInstance.get<{ success: boolean; data: any[] }>('/vehicle-models');
+    return response.data.data || [];
   }
 }
 
