@@ -1,12 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView, Modal, Platform,
   Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  FlatList
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import vehicleService, { Vehicle } from '@/services/vehicleService';
+import { Vehicle } from '@/services/vehicleService';
 
 export type VehicleFormState = {
+  make_id: string;
   vehicle_class_id: string;
   model_id: string;
   license_plate: string;
@@ -16,7 +18,13 @@ export type VehicleFormState = {
 };
 
 export const EMPTY_VEHICLE_FORM: VehicleFormState = {
-  vehicle_class_id: '', model_id: '', license_plate: '', vehicle_model: '', fuel_type: '', color: ''
+  make_id: '',
+  vehicle_class_id: '',
+  model_id: '',
+  license_plate: '',
+  vehicle_model: '',
+  fuel_type: 'Xăng',
+  color: ''
 };
 
 type ModalVehicalProps = {
@@ -27,6 +35,9 @@ type ModalVehicalProps = {
   onClose: () => void;
   onSubmit: () => void;
   onChangeForm: React.Dispatch<React.SetStateAction<VehicleFormState>>;
+  classesList?: any[];
+  modelsList?: any[];
+  makesList?: any[];
 };
 
 const CYAN = '#06B6D4';
@@ -58,49 +69,138 @@ function FieldInput({
   );
 }
 
-const fieldStyles = StyleSheet.create({
-  group: { marginBottom: 14 },
-  label: { fontSize: 12, fontWeight: '700', color: GRAY, marginBottom: 6, letterSpacing: 0.3 },
-  inputRow: {
-    flexDirection: 'row', alignItems: 'center',
-    borderWidth: 1.5, borderColor: '#E2E8F0',
-    borderRadius: 12, backgroundColor: '#FAFAFA',
-    paddingHorizontal: 12,
-  },
-  icon: { marginRight: 8 },
-  input: { flex: 1, paddingVertical: 12, fontSize: 14, color: DARK },
-});
+// Custom Dropdown/Picker Component matching the input styles
+function SelectField({
+  label, value, options, placeholder, onSelect, icon, disabled = false
+}: {
+  label: string;
+  value: string;
+  options: Array<{ label: string; value: string }>;
+  placeholder: string;
+  onSelect: (value: string) => void;
+  icon: string;
+  disabled?: boolean;
+}) {
+  const [modalVisible, setModalVisible] = useState(false);
+  
+  const selectedOption = options.find(opt => opt.value === value);
+  const displayLabel = selectedOption ? selectedOption.label : placeholder;
+
+  return (
+    <View style={fieldStyles.group}>
+      <Text style={fieldStyles.label}>{label}</Text>
+      <Pressable
+        style={[fieldStyles.inputRow, disabled && styles.disabledRow]}
+        onPress={() => { if (!disabled) setModalVisible(true); }}
+      >
+        <MaterialCommunityIcons name={icon as any} size={17} color={GRAY} style={fieldStyles.icon} />
+        <Text style={[
+          fieldStyles.inputText,
+          !selectedOption && { color: '#94A3B8' }
+        ]}>
+          {displayLabel}
+        </Text>
+        <MaterialCommunityIcons name="chevron-down" size={18} color={GRAY} />
+      </Pressable>
+
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.pickerOverlay}>
+          <Pressable style={{ flex: 1 }} onPress={() => setModalVisible(false)} />
+          <View style={styles.pickerSheet}>
+            <View style={styles.pickerHeader}>
+              <Text style={styles.pickerTitle}>{label}</Text>
+              <Pressable
+                onPress={() => setModalVisible(false)}
+                style={styles.pickerCloseBtn}
+              >
+                <MaterialCommunityIcons name="close" size={18} color={DARK} />
+              </Pressable>
+            </View>
+
+            {options.length === 0 ? (
+              <View style={styles.emptyOptions}>
+                <Text style={styles.emptyOptionsText}>Không có lựa chọn nào</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={options}
+                keyExtractor={(item) => item.value}
+                renderItem={({ item }) => {
+                  const isSelected = item.value === value;
+                  return (
+                    <Pressable
+                      style={[styles.optionItem, isSelected && styles.optionItemSelected]}
+                      onPress={() => {
+                        onSelect(item.value);
+                        setModalVisible(false);
+                      }}
+                    >
+                      <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
+                        {item.label}
+                      </Text>
+                      {isSelected && (
+                        <MaterialCommunityIcons name="check" size={18} color={CYAN} />
+                      )}
+                    </Pressable>
+                  );
+                }}
+                ItemSeparatorComponent={() => <View style={styles.optionSeparator} />}
+                contentContainerStyle={{ paddingBottom: 30 }}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
 
 export default function ModalVehical({
   visible, submitting, editingVehicle, form, onClose, onSubmit, onChangeForm,
+  classesList = [], modelsList = [], makesList = []
 }: ModalVehicalProps) {
   const isEdit = !!editingVehicle;
   const accentColor = CYAN;
   
-  const [classes, setClasses] = useState<any[]>([]);
-  const [models, setModels] = useState<any[]>([]);
-  const [loadingOptions, setLoadingOptions] = useState(false);
+  // Format classes, makes, and models options
+  const classesOptions = classesList.map(c => ({
+    label: c.class_name,
+    value: c._id
+  }));
 
-  useEffect(() => {
-    if (visible) {
-      loadOptions();
-    }
-  }, [visible]);
+  const makesOptions = makesList.map(m => ({
+    label: m.make_name,
+    value: m._id
+  }));
 
-  const loadOptions = async () => {
-    setLoadingOptions(true);
-    try {
-      const [fetchedClasses, fetchedModels] = await Promise.all([
-        vehicleService.getVehicleClasses(),
-        vehicleService.getVehicleModels(),
-      ]);
-      setClasses(fetchedClasses || []);
-      setModels(fetchedModels || []);
-    } catch (e) {
-      console.log('Error fetching options', e);
-    } finally {
-      setLoadingOptions(false);
-    }
+  // Filter models options by selected make_id
+  const filteredModels = modelsList.filter(m => {
+    const makeId = typeof m.make_id === 'object' && m.make_id !== null ? m.make_id?._id : m.make_id;
+    return makeId === form.make_id;
+  });
+
+  const modelsOptions = filteredModels.map(m => ({
+    label: m.model_name,
+    value: m._id
+  }));
+
+  const fuelOptions = [
+    { label: 'Xăng', value: 'Xăng' },
+    { label: 'Dầu', value: 'Dầu' },
+    { label: 'Điện', value: 'Điện' }
+  ];
+
+  const handleSelectMake = (makeId: string) => {
+    onChangeForm(prev => ({
+      ...prev,
+      make_id: makeId,
+      model_id: '' // reset model when make changes
+    }));
   };
 
   return (
@@ -122,7 +222,7 @@ export default function ModalVehical({
                 </View>
                 <View>
                   <Text style={styles.headerTitle}>
-                    {isEdit ? 'Chỉnh sửa phương tiện' : 'Thêm phương tiện'}
+                    {isEdit ? 'Chỉnh sửa phương tiện' : 'Thêm phương tiện mới'}
                   </Text>
                   <Text style={styles.headerSub}>
                     Điền thông tin xe của bạn
@@ -141,72 +241,77 @@ export default function ModalVehical({
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}>
               
-              {loadingOptions ? (
-                 <ActivityIndicator size="small" color={CYAN} style={{ marginVertical: 20 }} />
-              ) : (
-                <>
-                  <View style={styles.typeSection}>
-                    <Text style={fieldStyles.label}>Loại xe (Class)</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeRow}>
-                      {classes.map(c => (
-                        <Pressable 
-                          key={c._id} 
-                          onPress={() => onChangeForm(prev => ({ ...prev, vehicle_class_id: c._id }))}
-                          style={[styles.chip, form.vehicle_class_id === c._id && styles.chipSelected]}>
-                          <Text style={[styles.chipText, form.vehicle_class_id === c._id && styles.chipTextSelected]}>{c.class_name}</Text>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  </View>
+              <FieldInput
+                label="Biển số xe *"
+                value={form.license_plate}
+                onChangeText={(t) => onChangeForm(c => ({ ...c, license_plate: t }))}
+                placeholder="VD: 59A1-12345"
+                autoCapitalize="characters"
+                icon="card-account-details-outline"
+              />
 
-                  <View style={styles.typeSection}>
-                    <Text style={fieldStyles.label}>Hãng/Mẫu xe (Model)</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeRow}>
-                      {models.map(m => (
-                        <Pressable 
-                          key={m._id} 
-                          onPress={() => onChangeForm(prev => ({ ...prev, model_id: m._id }))}
-                          style={[styles.chip, form.model_id === m._id && styles.chipSelected]}>
-                          <Text style={[styles.chipText, form.model_id === m._id && styles.chipTextSelected]}>{m.model_name}</Text>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  </View>
-
-                  <FieldInput
-                    label="Biển số xe"
-                    value={form.license_plate}
-                    onChangeText={(t) => onChangeForm(c => ({ ...c, license_plate: t }))}
-                    placeholder="VD: 51G-123.45"
-                    autoCapitalize="characters"
-                    icon="card-account-details-outline"
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <SelectField
+                    label="Hãng xe *"
+                    value={form.make_id}
+                    options={makesOptions}
+                    placeholder="Chọn hãng"
+                    onSelect={handleSelectMake}
+                    icon="factory"
                   />
-                  
-                  <FieldInput
-                    label="Phiên bản xe (Ví dụ: Airblade 125, Vios G)"
-                    value={form.vehicle_model}
-                    onChangeText={(t) => onChangeForm(c => ({ ...c, vehicle_model: t }))}
-                    placeholder="VD: Vios G 2022"
+                </View>
+                <View style={styles.col}>
+                  <SelectField
+                    label="Dòng xe (Model) *"
+                    value={form.model_id}
+                    options={modelsOptions}
+                    placeholder={form.make_id ? "Chọn dòng" : "Hãng trước"}
+                    onSelect={(val) => onChangeForm(prev => ({ ...prev, model_id: val }))}
                     icon="car-info"
+                    disabled={!form.make_id}
                   />
+                </View>
+              </View>
 
-                  <FieldInput
-                    label="Loại nhiên liệu"
+              <SelectField
+                label="Loại xe (Kiểu dáng) *"
+                value={form.vehicle_class_id}
+                options={classesOptions}
+                placeholder="Chọn loại xe"
+                onSelect={(val) => onChangeForm(prev => ({ ...prev, vehicle_class_id: val }))}
+                icon="car-estate"
+              />
+
+              <FieldInput
+                label="Tên xe (Phiên bản cụ thể) *"
+                value={form.vehicle_model}
+                onChangeText={(t) => onChangeForm(c => ({ ...c, vehicle_model: t }))}
+                placeholder="VD: SH 150i, Camry 2.5Q..."
+                icon="label-outline"
+              />
+
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <SelectField
+                    label="Loại nhiên liệu *"
                     value={form.fuel_type}
-                    onChangeText={(t) => onChangeForm(c => ({ ...c, fuel_type: t }))}
-                    placeholder="VD: Xăng, Dầu, Điện"
+                    options={fuelOptions}
+                    placeholder="Nhiên liệu"
+                    onSelect={(val) => onChangeForm(prev => ({ ...prev, fuel_type: val }))}
                     icon="gas-station"
                   />
-
+                </View>
+                <View style={styles.col}>
                   <FieldInput
-                    label="Màu sắc"
+                    label="Màu xe *"
                     value={form.color}
                     onChangeText={(t) => onChangeForm(c => ({ ...c, color: t }))}
-                    placeholder="VD: Đen, Trắng"
+                    placeholder="VD: Trắng, Đen..."
                     icon="palette"
                   />
-                </>
-              )}
+                </View>
+              </View>
 
               {/* Action buttons */}
               <View style={styles.actions}>
@@ -226,7 +331,7 @@ export default function ModalVehical({
                   ) : (
                     <>
                       <MaterialCommunityIcons name={isEdit ? 'check' : 'plus'} size={18} color="#fff" />
-                      <Text style={styles.submitText}>{isEdit ? 'Lưu thay đổi' : 'Thêm phương tiện'}</Text>
+                      <Text style={styles.submitText}>{isEdit ? 'Cập nhật' : 'Thêm mới'}</Text>
                     </>
                   )}
                 </Pressable>
@@ -241,11 +346,25 @@ export default function ModalVehical({
   );
 }
 
+const fieldStyles = StyleSheet.create({
+  group: { marginBottom: 14 },
+  label: { fontSize: 13, fontWeight: '600', color: DARK, marginBottom: 6 },
+  inputRow: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderColor: '#E2E8F0',
+    borderRadius: 10, backgroundColor: '#FAFAFA',
+    paddingHorizontal: 12, height: 48,
+  },
+  icon: { marginRight: 8 },
+  input: { flex: 1, height: '100%', fontSize: 14, color: DARK },
+  inputText: { flex: 1, fontSize: 14, color: DARK },
+});
+
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
     maxHeight: '92%',
     shadowColor: DARK, shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.12, shadowRadius: 24, elevation: 20,
@@ -268,35 +387,103 @@ const styles = StyleSheet.create({
     backgroundColor: BG, alignItems: 'center', justifyContent: 'center',
   },
   body: { padding: 20 },
-  typeSection: { marginBottom: 16 },
-  typeRow: { flexDirection: 'row', gap: 10, paddingBottom: 4 },
-  chip: {
-    paddingHorizontal: 16, paddingVertical: 8,
-    borderRadius: 20, backgroundColor: '#FAFAFA',
-    borderWidth: 1, borderColor: '#E2E8F0',
-    marginRight: 8,
-  },
-  chipSelected: {
-    backgroundColor: CYAN + '15',
-    borderColor: CYAN,
-  },
-  chipText: {
-    fontSize: 13, fontWeight: '600', color: GRAY,
-  },
-  chipTextSelected: {
-    color: CYAN,
-  },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 8 },
+  actions: { flexDirection: 'row', gap: 10, marginTop: 12 },
   cancelBtn: {
-    flex: 0.38, paddingVertical: 14, borderRadius: 14,
+    flex: 0.38, paddingVertical: 13, borderRadius: 10,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: BG, borderWidth: 1, borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0',
   },
-  cancelText: { fontSize: 14, fontWeight: '700', color: GRAY },
+  cancelText: { fontSize: 14, fontWeight: '600', color: GRAY },
   submitBtn: {
     flex: 0.62, flexDirection: 'row', alignItems: 'center',
     justifyContent: 'center', gap: 8,
-    paddingVertical: 14, borderRadius: 14,
+    paddingVertical: 13, borderRadius: 10,
   },
-  submitText: { fontSize: 14, fontWeight: '800', color: '#fff' },
+  submitText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+
+  // Picker Modal Styles
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.4)',
+    justifyContent: 'flex-end',
+  },
+  pickerSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '50%',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    shadowColor: DARK,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    marginBottom: 8,
+  },
+  pickerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: DARK,
+  },
+  pickerCloseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+  },
+  optionItemSelected: {
+    backgroundColor: CYAN + '0A',
+    borderRadius: 8,
+  },
+  optionLabel: {
+    fontSize: 14,
+    color: DARK,
+    fontWeight: '500',
+  },
+  optionLabelSelected: {
+    color: CYAN,
+    fontWeight: '700',
+  },
+  optionSeparator: {
+    height: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  emptyOptions: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 30,
+  },
+  emptyOptionsText: {
+    fontSize: 14,
+    color: GRAY,
+  },
+  disabledRow: {
+    opacity: 0.55,
+    backgroundColor: '#F1F5F9',
+  },
+  row: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  col: {
+    flex: 1,
+  },
 });

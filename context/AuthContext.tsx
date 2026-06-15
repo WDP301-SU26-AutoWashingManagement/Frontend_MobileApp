@@ -44,6 +44,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(currentUser);
             setIsAuthenticated(true);
           }
+          // Fetch fresh profile in the background to sync latest points/referral codes
+          try {
+            const freshUser = await authService.getProfile();
+            console.log('🔄 [AuthContext] Fresh profile fetched from server:', freshUser.email);
+            setUser(freshUser);
+          } catch (profileErr) {
+            console.error('[AuthContext] Failed to fetch fresh profile on start:', profileErr);
+          }
         } else {
           console.log('❌ [AuthContext] No authentication found - user needs to login');
           setUser(null);
@@ -67,8 +75,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('🔐 [AuthContext] Login attempt:', email);
       const loginRequest: LoginRequest = { email, password, type: 'customer' };
       const result = await authService.login(loginRequest);
-      console.log('✅ [AuthContext] Login successful:', email);
-      setUser(result.user);
+      console.log('✅ [AuthContext] Login successful, fetching full profile:', email);
+      
+      const fullUser = await authService.getProfile();
+      setUser(fullUser);
       setTokens(result.tokens);
       setIsAuthenticated(true); // ✅ Toàn app nhận được update này
     } catch (err) {
@@ -88,8 +98,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('🔐 [AuthContext] Register attempt:', email);
       const registerRequest: RegisterRequest = { email, password, full_name, role: 'customer' };
       const result = await authService.register(registerRequest);
-      console.log('✅ [AuthContext] Register successful:', email);
-      setUser(result.user);
+      console.log('✅ [AuthContext] Register successful, fetching full profile:', email);
+      
+      const fullUser = await authService.getProfile();
+      setUser(fullUser);
       setTokens(result.tokens);
       setIsAuthenticated(true); // ✅ Toàn app nhận được update này
     } catch (err) {
@@ -106,11 +118,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-console.log('🔐 [AuthContext] Google login attempt');
+      console.log('🔐 [AuthContext] Google login attempt');
       const result = await authService.loginWithGoogle({ idToken });
       console.log('🔐 [AuthContext] Google idToken received (len):', idToken?.length);
-      console.log('✅ [AuthContext] Google login successful');
-      setUser(result.user);
+      console.log('✅ [AuthContext] Google login successful, fetching full profile');
+      
+      const fullUser = await authService.getProfile();
+      setUser(fullUser);
       setTokens(result.tokens);
       setIsAuthenticated(true);
     } catch (err) {
