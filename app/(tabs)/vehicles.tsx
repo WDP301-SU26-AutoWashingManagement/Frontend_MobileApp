@@ -24,14 +24,34 @@ export default function VehiclesScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
-  const [form, setForm] = useState<VehicleFormState>(EMPTY_VEHICLE_FORM);
+  const [form, setForm] = useState<VehicleFormState>({
+    make_id: '',
+    vehicle_class_id: '',
+    model_id: '',
+    license_plate: '',
+    vehicle_model: '',
+    fuel_type: 'Xăng',
+    color: ''
+  });
+
+  const [classes, setClasses] = useState<any[]>([]);
+  const [models, setModels] = useState<any[]>([]);
+  const [makes, setMakes] = useState<any[]>([]);
 
   const loadVehicles = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     setError(null);
     try {
-      const vehicleResponse = await vehicleService.getMyVehicles(1, 50);
+      const [vehicleResponse, fetchedClasses, fetchedModels, fetchedMakes] = await Promise.all([
+        vehicleService.getMyVehicles(1, 50),
+        vehicleService.getVehicleClasses(),
+        vehicleService.getVehicleModels(),
+        vehicleService.getMakes(),
+      ]);
       setVehicles(vehicleResponse.vehicles);
+      setClasses(fetchedClasses || []);
+      setModels(fetchedModels || []);
+      setMakes(fetchedMakes || []);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Không thể tải danh sách phương tiện';
       setError(message);
@@ -66,10 +86,16 @@ export default function VehiclesScreen() {
 
   const openEditModal = (vehicle: Vehicle) => {
     setEditingVehicle(vehicle);
+    
+    const modelId = typeof vehicle.model_id === 'object' ? vehicle.model_id?._id : vehicle.model_id;
+    const modelObj = models.find(m => m._id === modelId);
+    const makeId = modelObj ? (typeof modelObj.make_id === 'object' ? modelObj.make_id?._id : modelObj.make_id) : '';
+
     setForm({ 
+      make_id: makeId || '',
       license_plate: vehicle.license_plate || '', 
       vehicle_class_id: typeof vehicle.vehicle_class_id === 'object' ? vehicle.vehicle_class_id?._id : vehicle.vehicle_class_id, 
-      model_id: typeof vehicle.model_id === 'object' ? vehicle.model_id?._id : vehicle.model_id, 
+      model_id: modelId || '', 
       vehicle_model: vehicle.vehicle_model || '',
       fuel_type: vehicle.fuel_type || '',
       color: vehicle.color || ''
@@ -81,11 +107,19 @@ export default function VehiclesScreen() {
     if (submitting) return;
     setModalVisible(false);
     setEditingVehicle(null);
-    setForm(EMPTY_VEHICLE_FORM);
+    setForm({
+      make_id: '',
+      vehicle_class_id: '',
+      model_id: '',
+      license_plate: '',
+      vehicle_model: '',
+      fuel_type: 'Xăng',
+      color: ''
+    });
   };
 
   const handleSubmitVehicle = async () => {
-    if (!form.license_plate.trim() || !form.vehicle_model.trim() || !form.fuel_type.trim() || !form.color.trim() || !form.vehicle_class_id || !form.model_id) {
+    if (!form.license_plate.trim() || !form.vehicle_model.trim() || !form.fuel_type.trim() || !form.color.trim() || !form.vehicle_class_id || !form.model_id || !form.make_id) {
       Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin phương tiện');
       return;
     }
@@ -119,7 +153,15 @@ export default function VehiclesScreen() {
       }
       setModalVisible(false);
       setEditingVehicle(null);
-      setForm(EMPTY_VEHICLE_FORM);
+      setForm({
+        make_id: '',
+        vehicle_class_id: '',
+        model_id: '',
+        license_plate: '',
+        vehicle_model: '',
+        fuel_type: 'Xăng',
+        color: ''
+      });
       await loadVehicles(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Không thể lưu phương tiện';
@@ -153,13 +195,20 @@ export default function VehiclesScreen() {
     );
   };
 
+  const getVehicleClassObj = (classInfo: any) => {
+    if (typeof classInfo === 'object' && classInfo !== null) return classInfo;
+    return classes.find(c => c._id === classInfo);
+  };
+
   const getVehicleIcon = (classInfo: any) => {
-    const name = typeof classInfo === 'object' ? classInfo?.class_name : '';
-    return name && name.toLowerCase().includes('mô tô') ? 'motorbike' : 'car';
+    const classObj = getVehicleClassObj(classInfo);
+    const name = classObj?.class_name || '';
+    return name && (name.toLowerCase().includes('mô tô') || name.toLowerCase().includes('xe máy')) ? 'motorbike' : 'car';
   };
   const getVehicleColor = (classInfo: any) => {
-    const name = typeof classInfo === 'object' ? classInfo?.class_name : '';
-    return name && name.toLowerCase().includes('mô tô') ? '#8B5CF6' : CYAN;
+    const classObj = getVehicleClassObj(classInfo);
+    const name = classObj?.class_name || '';
+    return name && (name.toLowerCase().includes('mô tô') || name.toLowerCase().includes('xe máy')) ? '#8B5CF6' : CYAN;
   };
 
   const formatDate = (value?: string) => {
@@ -169,10 +218,22 @@ export default function VehiclesScreen() {
   };
 
   const renderVehicleItem = ({ item, index }: { item: Vehicle; index: number }) => {
+    const classObj = getVehicleClassObj(item.vehicle_class_id);
     const color = getVehicleColor(item.vehicle_class_id);
     const isDeleting = deletingId === item._id;
-    const modelName = typeof item.model_id === 'object' ? item.model_id?.model_name : '';
-    const className = typeof item.vehicle_class_id === 'object' ? item.vehicle_class_id?.class_name : 'Loại xe';
+
+    // Look up model
+    const modelId = typeof item.model_id === 'object' ? item.model_id?._id : item.model_id;
+    const modelObj = models.find(m => m._id === modelId);
+    const modelName = modelObj?.model_name || (typeof item.model_id === 'object' ? item.model_id?.model_name : '');
+
+    // Look up make
+    const makeId = modelObj ? (typeof modelObj.make_id === 'object' ? modelObj.make_id?._id : modelObj.make_id) : '';
+    const makeObj = makes.find(m => m._id === makeId);
+    const makeName = makeObj?.make_name || '';
+
+    const className = classObj?.class_name || 'Loại xe';
+    const displayName = makeName ? `${makeName} ${modelName} ${item.vehicle_model}` : `${modelName} ${item.vehicle_model}`;
 
     return (
       <View style={[styles.card, isDeleting && styles.cardDeleting]}>
@@ -186,7 +247,7 @@ export default function VehiclesScreen() {
               <MaterialCommunityIcons name={getVehicleIcon(item.vehicle_class_id) as any} size={26} color={color} />
             </View>
             <View style={styles.vehicleInfo}>
-              <Text style={styles.vehicleName}>{modelName ? `${modelName} ${item.vehicle_model}` : item.vehicle_model}</Text>
+              <Text style={styles.vehicleName}>{displayName}</Text>
               <View style={styles.plateRow}>
                 <MaterialCommunityIcons name="card-account-details-outline" size={12} color={GRAY} />
                 <Text style={styles.vehiclePlate}>{item.license_plate}</Text>
@@ -312,6 +373,9 @@ export default function VehiclesScreen() {
         onClose={closeModal}
         onSubmit={handleSubmitVehicle}
         onChangeForm={setForm}
+        classesList={classes}
+        modelsList={models}
+        makesList={makes}
       />
     </View>
   );

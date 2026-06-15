@@ -60,6 +60,14 @@ export interface User {
   last_login_at: string;
   created_at: string;
   updated_at: string;
+  role_data?: {
+    _id: string;
+    customer_code?: string;
+    referral_code?: string;
+    membership_points?: number;
+    reward_points?: number;
+    tier_id?: string;
+  } | null;
 }
 
 export interface Tokens {
@@ -442,6 +450,21 @@ class AuthService {
       });
     } catch (error: any) {
       const message = error.response?.data?.message || 'Thay đổi mật khẩu thất bại';
+      throw new Error(message);
+    }
+  }
+
+  /**
+   * Get fresh user profile from backend
+   */
+  async getProfile(): Promise<User> {
+    try {
+      const response = await this.axiosInstance.get<{ data: User }>('/profile');
+      const user = response.data.data;
+      await TokenManager.saveUser(user);
+      return user;
+    } catch (error: any) {
+      const message = error.response?.data?.message || 'Không thể lấy thông tin profile';
       throw new Error(message);
     }
   }

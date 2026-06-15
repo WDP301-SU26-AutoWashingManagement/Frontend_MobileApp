@@ -231,6 +231,11 @@ class VehicleService {
     const response = await this.axiosInstance.get<{ success: boolean; data: any[] }>('/vehicle-models');
     return response.data.data || [];
   }
+
+  async getMakes() {
+    const response = await this.axiosInstance.get<{ success: boolean; data: any[] }>('/makes');
+    return response.data.data || [];
+  }
 }
 
 export default new VehicleService();

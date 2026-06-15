@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   Alert,
+  Clipboard,
   StatusBar,
   Platform,
 } from 'react-native';
@@ -165,6 +166,36 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Thẻ thành viên Section */}
+        {user?.role === 'customer' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Thẻ thành viên</Text>
+            <View style={styles.tierContainer}>
+              <TierProgressCard points={user?.role_data?.membership_points ?? 0} />
+              
+              <TierRow
+                icon="star-outline"
+                iconColor="#EAB308"
+                label="Điểm hạng"
+                value={user?.role_data?.membership_points ?? 0}
+              />
+              <TierRow
+                icon="ribbon"
+                iconColor="#06B6D4"
+                label="Điểm thưởng"
+                value={user?.role_data?.reward_points ?? 0}
+              />
+              <TierRow
+                icon="share-variant-outline"
+                iconColor="#A855F7"
+                label="Mã giới thiệu"
+                value={user?.role_data?.referral_code ?? '—'}
+                isReferral
+              />
+            </View>
+          </View>
+        )}
+
         {/* Info Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Thông tin cá nhân</Text>
@@ -259,6 +290,148 @@ function ActionRow({ icon, label, color, onPress, disabled }: { icon: any; label
       </View>
       <Text style={styles.actionLabel}>{label}</Text>
       <MaterialCommunityIcons name="chevron-right" size={20} color="#CBD5E1" />
+    </Pressable>
+  );
+}
+
+const TIER_THRESHOLDS = [
+  { name: 'member', min: 0, label: 'Thành viên' },
+  { name: 'silver', min: 100, label: 'Bạc' },
+  { name: 'gold', min: 300, label: 'Vàng' },
+  { name: 'platinum', min: 600, label: 'Bạch kim' },
+];
+
+function getTierProgress(currentPoints: number) {
+  let currentTierIndex = 0;
+  for (let i = TIER_THRESHOLDS.length - 1; i >= 0; i--) {
+    if (currentPoints >= TIER_THRESHOLDS[i].min) {
+      currentTierIndex = i;
+      break;
+    }
+  }
+
+  const currentTier = TIER_THRESHOLDS[currentTierIndex];
+  const isMaxTier = currentTierIndex === TIER_THRESHOLDS.length - 1;
+
+  if (isMaxTier) {
+    return {
+      currentPoints,
+      nextPoints: currentTier.min,
+      nextTierLabel: 'Cấp tối đa',
+      percentage: 1,
+      pointsNeeded: 0,
+      currentTierLabel: currentTier.label,
+    };
+  }
+
+  const nextTier = TIER_THRESHOLDS[currentTierIndex + 1];
+  const range = nextTier.min - currentTier.min;
+  const progress = currentPoints - currentTier.min;
+  const percentage = Math.min(Math.max(progress / range, 0), 1);
+  const pointsNeeded = nextTier.min - currentPoints;
+
+  return {
+    currentPoints,
+    nextPoints: nextTier.min,
+    nextTierLabel: nextTier.label,
+    percentage,
+    pointsNeeded,
+    currentTierLabel: currentTier.label,
+  };
+}
+
+function TierProgressCard({ points }: { points: number }) {
+  const progressInfo = getTierProgress(points);
+  
+  return (
+    <View style={styles.progressCard}>
+      <View style={styles.progressTextRow}>
+        <Text style={styles.progressTextCurrent}>
+          {progressInfo.currentPoints.toLocaleString('vi-VN')}
+          <Text style={styles.pointsUnit}> điểm</Text>
+        </Text>
+        <Text style={styles.progressTextNext}>
+          /{progressInfo.nextPoints.toLocaleString('vi-VN')} điểm ({progressInfo.nextTierLabel})
+        </Text>
+      </View>
+
+      <View style={styles.progressBarWrapper}>
+        <View style={styles.progressBarTrack}>
+          <View 
+            style={[
+              styles.progressBarFill, 
+              { width: `${progressInfo.percentage * 100}%` }
+            ]} 
+          />
+        </View>
+        
+        <View style={styles.nextTierIconContainer}>
+          <MaterialCommunityIcons 
+            name="crown" 
+            size={18} 
+            color={progressInfo.percentage >= 1 ? '#EAB308' : '#94A3B8'} 
+          />
+        </View>
+      </View>
+
+      {progressInfo.pointsNeeded > 0 ? (
+        <Text style={styles.progressHelperText}>
+          Tích lũy thêm <Text style={styles.pointsHighlight}>{progressInfo.pointsNeeded}</Text> điểm để lên hạng {progressInfo.nextTierLabel}
+        </Text>
+      ) : (
+        <Text style={styles.progressHelperText}>
+          Chúc mừng! Bạn đã đạt cấp độ cao nhất ({progressInfo.currentTierLabel})
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function TierRow({
+  icon,
+  iconColor,
+  label,
+  value,
+  isReferral,
+}: {
+  icon: any;
+  iconColor: string;
+  label: string;
+  value: string | number;
+  isReferral?: boolean;
+}) {
+  const handlePress = () => {
+    if (!isReferral) return;
+
+    if (!value || value === '—') {
+      Alert.alert('Mã giới thiệu', 'Tài khoản của bạn chưa có mã giới thiệu.');
+      return;
+    }
+
+    try {
+      Clipboard.setString(value.toString());
+      Alert.alert('Thành công', `Đã sao chép mã giới thiệu: ${value}`);
+    } catch (err) {
+      Alert.alert('Mã giới thiệu', `Mã giới thiệu của bạn là: ${value}`);
+    }
+  };
+
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.tierRow,
+        isReferral && pressed && styles.tierRowPressed,
+      ]}
+      onPress={isReferral ? handlePress : undefined}
+      disabled={!isReferral}
+    >
+      <View style={styles.tierRowLeft}>
+        <MaterialCommunityIcons name={icon} size={22} color={iconColor} style={styles.tierRowIcon} />
+        <Text style={styles.tierRowLabel}>{label}</Text>
+      </View>
+      <Text style={[styles.tierRowValue, isReferral && styles.tierRowValueReferral]}>
+        {value}
+      </Text>
     </Pressable>
   );
 }
@@ -382,4 +555,119 @@ const styles = StyleSheet.create({
   },
   logoutBtnPressed: { backgroundColor: 'rgba(239,68,68,0.14)' },
   logoutText: { fontSize: 14, fontWeight: '700', color: '#EF4444' },
+
+  // Tier Styles
+  tierContainer: {
+    gap: 12,
+  },
+  tierRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  tierRowPressed: {
+    backgroundColor: '#E2E8F0',
+  },
+  tierRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  tierRowIcon: {
+    marginRight: 2,
+  },
+  tierRowLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  tierRowValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: DARK,
+  },
+  tierRowValueReferral: {
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+
+  // Progress Card Styles
+  progressCard: {
+    backgroundColor: SURFACE,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 1.5,
+  },
+  progressTextRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  progressTextCurrent: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#EF4444',
+  },
+  pointsUnit: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#EF4444',
+  },
+  progressTextNext: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748B',
+    marginLeft: 4,
+  },
+  progressBarWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+    gap: 10,
+  },
+  progressBarTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#EF4444',
+    borderRadius: 4,
+  },
+  nextTierIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  progressHelperText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  pointsHighlight: {
+    fontWeight: '700',
+    color: '#EF4444',
+  },
 });
