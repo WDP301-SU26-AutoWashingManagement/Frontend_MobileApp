@@ -1,6 +1,8 @@
 import { StatusBar } from 'expo-status-bar';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
+import Branches from '@/components/Branches';
+import ComboPackages from '@/components/ComboPackages';
 import Features from '@/components/Features';
 import Footer from '@/components/Footer';
 import Hero from '@/components/Hero';
@@ -15,7 +17,9 @@ export default function HomeScreen() {
         <Hero />
         <Features />
         <HowItWorks />
+        <ComboPackages />
         <Tiers />
+        <Branches />
         <Footer />
       </ScrollView>
     </View>
