@@ -7,6 +7,8 @@ import Features from '@/components/Features';
 import Footer from '@/components/Footer';
 import Hero from '@/components/Hero';
 import HowItWorks from '@/components/How';
+import Promotions from '@/components/Promotions';
+import IndividualServices from '@/components/IndividualServices';
 import Tiers from '@/components/Tiers';
 
 export default function HomeScreen() {
@@ -17,7 +19,9 @@ export default function HomeScreen() {
         <Hero />
         <Features />
         <HowItWorks />
+        <Promotions />
         <ComboPackages />
+        <IndividualServices />
         <Tiers />
         <Branches />
         <Footer />

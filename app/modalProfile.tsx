@@ -17,7 +17,7 @@ import { Image } from 'expo-image';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 
-export type ProfileModalType = 'edit' | 'password' | null;
+export type ProfileModalType = 'edit' | 'password' | 'logout' | null;
 
 export interface ProfileEditForm { full_name: string; phone: string; }
 export interface ProfilePasswordForm { oldPassword: string; newPassword: string; confirmPassword: string; }
@@ -33,6 +33,7 @@ export interface ProfileModalsProps {
   passwordForm: ProfilePasswordForm;
   setPasswordForm: React.Dispatch<React.SetStateAction<ProfilePasswordForm>>;
   onSubmitPassword: () => void;
+  onLogout: () => void;
 }
 
 const CYAN = '#06B6D4';
@@ -327,6 +328,104 @@ const pwStyles = StyleSheet.create({
   submitText: { fontSize: 15, fontWeight: '800', color: '#fff' },
 });
 
+export function ProfileLogoutModal(props: {
+  visible: boolean; onClose: () => void; loading: boolean; onLogout: () => void;
+}) {
+  return (
+    <ModalShell visible={props.visible} onClose={props.onClose} title="Đăng xuất" icon="logout-variant" iconColor="#EF4444">
+      <View style={logoutStyles.container}>
+        <View style={logoutStyles.iconCircle}>
+          <MaterialCommunityIcons name="logout-variant" size={32} color="#EF4444" />
+        </View>
+        <Text style={logoutStyles.title}>Bạn có chắc chắn?</Text>
+        <Text style={logoutStyles.subtitle}>
+          Bạn đang thao tác đăng xuất khỏi hệ thống. Bạn có muốn tiếp tục không?
+        </Text>
+
+        <View style={logoutStyles.buttonRow}>
+          <Pressable
+            style={({ pressed }) => [logoutStyles.cancelBtn, pressed && logoutStyles.btnPressed]}
+            onPress={props.onClose}
+            disabled={props.loading}>
+            <Text style={logoutStyles.cancelText}>Hủy</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [logoutStyles.confirmBtn, pressed && logoutStyles.btnPressed]}
+            onPress={props.onLogout}
+            disabled={props.loading}>
+            <Text style={logoutStyles.confirmText}>
+              {props.loading ? 'Đang xử lý...' : 'Đăng xuất'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </ModalShell>
+  );
+}
+
+const logoutStyles = StyleSheet.create({
+  container: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 20,
+  },
+  iconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(239,68,68,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: DARK,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: GRAY,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+  },
+  cancelText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  confirmBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+  },
+  confirmText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  btnPressed: {
+    opacity: 0.8,
+  },
+});
+
 export function ProfileModals(props: ProfileModalsProps) {
   return (
     <>
@@ -347,6 +446,12 @@ export function ProfileModals(props: ProfileModalsProps) {
         passwordForm={props.passwordForm}
         setPasswordForm={props.setPasswordForm}
         onSubmitPassword={props.onSubmitPassword}
+      />
+      <ProfileLogoutModal
+        visible={props.visibleType === 'logout'}
+        onClose={props.onClose}
+        loading={props.loading}
+        onLogout={props.onLogout}
       />
     </>
   );
