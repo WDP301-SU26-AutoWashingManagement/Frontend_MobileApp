@@ -30,20 +30,23 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout, loading, updateProfile, changePassword, error, clearError } = useAuth();
   const [avatarError, setAvatarError] = useState(false);
-  const [modalType, setModalType] = useState<'edit' | 'password' | null>(null);
+  const [modalType, setModalType] = useState<'edit' | 'password' | 'logout' | null>(null);
   const [editForm, setEditForm] = useState({ full_name: user?.full_name || '', phone: user?.phone || '' });
   const [localImage, setLocalImage] = useState<string | null>(null);
   const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
 
-  const handleLogout = async () => {
-    Alert.alert('Đăng xuất', 'Bạn có chắc muốn đăng xuất?', [
-      { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Đăng xuất', style: 'destructive', onPress: async () => {
-          try { await logout(); } catch (err) { console.error('Logout failed:', err); }
-        }
-      },
-    ]);
+  const handleLogoutPress = () => {
+    setModalType('logout');
+  };
+
+  const doLogout = async () => {
+    try {
+      await logout();
+      setModalType(null);
+      router.replace('/');
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
   };
 
   const handleEditProfile = async () => {
@@ -234,11 +237,10 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Logout */}
         <View style={styles.section}>
           <Pressable
             style={({ pressed }) => [styles.logoutBtn, pressed && styles.logoutBtnPressed]}
-            onPress={handleLogout}
+            onPress={handleLogoutPress}
             disabled={loading}>
             <MaterialCommunityIcons name="logout-variant" size={20} color="#EF4444" />
             <Text style={styles.logoutText}>{loading ? 'Đang đăng xuất...' : 'Đăng xuất'}</Text>
@@ -260,6 +262,7 @@ export default function ProfileScreen() {
         passwordForm={passwordForm}
         setPasswordForm={setPasswordForm}
         onSubmitPassword={handleChangePassword}
+        onLogout={doLogout}
       />
     </>
   );

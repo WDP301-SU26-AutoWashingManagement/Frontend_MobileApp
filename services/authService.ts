@@ -198,7 +198,8 @@ class AuthService {
           try {
             const refreshToken = await TokenManager.getRefreshToken();
             if (!refreshToken) {
-              throw new Error('No refresh token available');
+              this.isRefreshing = false;
+              return Promise.reject(error);
             }
 
             const response = await this.axiosInstance.post<AuthResponse>('/auth/refresh', {
@@ -256,7 +257,8 @@ class AuthService {
 
       return { user, tokens };
     } catch (error: any) {
-      const message = error.response?.data?.message || 'Đăng nhập thất bại';
+      console.error('[authService.login] Error:', error.message, error.response?.data);
+      const message = error.response?.data?.message || error.message || 'Đăng nhập thất bại';
       throw new Error(message);
     }
   }
