@@ -11,6 +11,7 @@ const REFRESH_TOKEN_KEY = '@auth_refresh_token';
 export interface Booking {
   _id: string;
   id?: string;
+  customer_id?: any;
   appointment_code: string;
   booking_status: 'pending' | 'confirmed' | 'checked_in' | 'in_progress' | 'completed' | 'cancelled';
   booking_source: 'app' | 'web' | 'walk_in';
@@ -54,6 +55,9 @@ export interface Booking {
   }>;
   vat_requested?: boolean;
   tax_code?: string;
+  base_price?: number;
+  final_price?: number;
+  discount_amount?: number;
 }
 
 export interface CreateBookingPayload {
@@ -206,6 +210,21 @@ class BookingService {
       return response.data.data;
     } catch (error) {
       console.error(`Error cancelling booking ${bookingId} in Mobile:`, error);
+      throw error;
+    }
+  }
+
+  async getRecommendation(vehicleId: string, branchId?: string): Promise<any> {
+    try {
+      const response = await this.axiosInstance.get<{ success: boolean; data: any }>(
+        '/bookings/recommendation',
+        {
+          params: { vehicle_id: vehicleId, ...(branchId ? { branch_id: branchId } : {}) },
+        }
+      );
+      return response.data.data;
+    } catch (error) {
+      console.error('Error getting recommendation in Mobile:', error);
       throw error;
     }
   }

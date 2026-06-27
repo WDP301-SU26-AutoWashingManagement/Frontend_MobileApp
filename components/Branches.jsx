@@ -19,8 +19,7 @@ export default function Branches() {
     async function loadBranches() {
       try {
         const data = await branchService.list();
-        // Chỉ lấy các chi nhánh đang hoạt động
-        setBranches(data.filter((b) => b.is_active !== false));
+        setBranches(data);
       } catch (error) {
         console.error('Lỗi khi tải danh sách chi nhánh trong component:', error);
       } finally {
@@ -127,7 +126,14 @@ export default function Branches() {
               </View>
 
               {/* Branch Information */}
-              <View style={styles.cardContent}>
+              <View style={[styles.cardContent, branch.is_active === false && styles.cardContentInactive]}>
+                {branch.is_active === false && (
+                  <View style={styles.inactiveBadge}>
+                    <MaterialCommunityIcons name="clock-alert-outline" size={14} color="#EF4444" />
+                    <Text style={styles.inactiveBadgeText}>Tạm đóng</Text>
+                  </View>
+                )}
+
                 <View style={styles.addressRow}>
                   <MaterialCommunityIcons name="map-marker" size={20} color="#0EA5B7" style={styles.addressIcon} />
                   <Text style={styles.addressText}>
@@ -324,6 +330,26 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#0EA5B7',
     fontSize: 14,
+    fontWeight: '700',
+  },
+  cardContentInactive: {
+    opacity: 0.8,
+  },
+  inactiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+  },
+  inactiveBadgeText: {
+    color: '#EF4444',
+    fontSize: 12,
     fontWeight: '700',
   },
 });

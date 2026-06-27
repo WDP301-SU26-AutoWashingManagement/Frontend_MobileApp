@@ -31,8 +31,9 @@ class PromotionService {
     }
 
     try {
-      const response = await axios.get<{ success: boolean; message?: string; data: any }>(
-        `${API_BASE_URL}/promotions/validate/${encodeURIComponent(trimmed)}`,
+      const response = await axios.post<{ success: boolean; message?: string; data: any }>(
+        `${API_BASE_URL}/promotions/discount`,
+        { code: trimmed },
         {
           timeout: API_CONFIG.API_TIMEOUT,
         }
@@ -44,18 +45,21 @@ class PromotionService {
       const promotion: Promotion = {
         _id: data._id || data.id,
         id: data._id || data.id,
-        promotion_code: String(data.promotion_code ?? ''),
-        discount_type: data.discount_type === 'fixed' ? 'fixed' : 'percentage',
-        discount_value: Number(data.discount_value ?? 0),
+        promotion_code: String(data.code || data.promotion_code || ''),
+        promotion_name: String(data.promotion_name || ''),
+        description: String(data.description || ''),
+        min_order_amount: Number(data.min_order_amount || 0),
+        discount_type: data.discount_percentage ? 'percentage' : 'fixed',
+        discount_value: Number(data.discount_percentage || data.discount_amount || 0),
         bonus_reward_point: data.bonus_reward_point != null ? Number(data.bonus_reward_point) : undefined,
-        start_at: data.start_at,
-        end_at: data.end_at,
+        start_at: data.start_date || data.start_at,
+        end_at: data.end_date || data.end_at,
         is_active: data.is_active !== false,
       };
 
       return {
         promotion,
-        message: response.data.message,
+        message: response.data.message || 'Áp dụng mã thành công',
       };
     } catch (error: any) {
       console.error('Error validating promo code in Mobile:', error);

@@ -12,9 +12,10 @@ import {
   Alert,
   Dimensions,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
+import { useAuth } from '../../hooks/useAuthService';
 
 // Services
 import bookingService, { Booking, CreateBookingPayload } from '../../services/bookingService';
@@ -66,9 +67,22 @@ const getStatusLabel = (status: Booking['booking_status']) => {
 
 export default function BookingsScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+
+  const tierDiscountPercentage = useMemo(() => {
+    const tier = user?.role_data?.tier_id;
+    if (tier && typeof tier === 'object' && 'discount_percentage' in tier) {
+      return (tier as any).discount_percentage || 0;
+    }
+    const points = user?.role_data?.membership_points ?? 0;
+    if (points >= 600) return 15;
+    if (points >= 300) return 10;
+    if (points >= 100) return 5;
+    return 0;
+  }, [user]);
 
   const fetchBookings = async () => {
     try {
@@ -141,7 +155,18 @@ export default function BookingsScreen() {
   };
 
   const renderBookingItem = ({ item }: { item: Booking }) => {
-    const totalPrice = item.services.reduce((sum, s) => sum + s.price_snapshot, 0);
+    const basePrice = item.services.reduce((sum, s) => sum + s.price_snapshot, 0);
+    
+    // Get tier discount percentage from populated customer details or fallback to current user's
+    const itemCustomer = item.customer_id as any;
+    const itemTier = itemCustomer?.tier_id;
+    const bookingTierDiscountPercentage = (itemTier && typeof itemTier === 'object' && 'discount_percentage' in itemTier)
+      ? (itemTier.discount_percentage || 0)
+      : tierDiscountPercentage;
+
+    const finalPrice = item.discount_amount !== undefined 
+      ? (item.final_price ?? basePrice)
+      : Math.max(0, basePrice - Math.round(basePrice * (bookingTierDiscountPercentage / 100)));
     const scheduledDate = new Date(item.scheduled_at);
     const dateFormatted = scheduledDate.toLocaleDateString('vi-VN');
     const timeFormatted = scheduledDate.toLocaleTimeString('vi-VN', {
@@ -194,7 +219,18 @@ export default function BookingsScreen() {
         </View>
 
         <View style={styles.bookingFooter}>
-          <Text style={styles.price}>{totalPrice.toLocaleString('vi-VN')} ₫</Text>
+          {finalPrice < basePrice ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={[styles.price, { textDecorationLine: 'line-through', fontSize: 13, color: '#94A3B8' }]}>
+                {basePrice.toLocaleString('vi-VN')} ₫
+              </Text>
+              <Text style={styles.price}>
+                {finalPrice.toLocaleString('vi-VN')} ₫
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.price}>{finalPrice.toLocaleString('vi-VN')} ₫</Text>
+          )}
           <View style={styles.actions}>
             {canCancel && (
               <Pressable
@@ -214,11 +250,13 @@ export default function BookingsScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Đặt lịch rửa xe</Text>
-        <Pressable
-          style={styles.bookButton}
-          onPress={() => setShowModal(true)}>
-          <MaterialCommunityIcons name="plus" size={24} color="#FFFFFF" />
-        </Pressable>
+        {user?.role === 'customer' && (
+          <Pressable
+            style={styles.bookButton}
+            onPress={() => setShowModal(true)}>
+            <MaterialCommunityIcons name="plus" size={24} color="#FFFFFF" />
+          </Pressable>
+        )}
       </View>
 
       {loading && bookings.length === 0 ? (
@@ -231,11 +269,13 @@ export default function BookingsScreen() {
           <MaterialCommunityIcons name="calendar-blank" size={64} color="#D1D5DB" />
           <Text style={styles.emptyText}>Chưa có lịch đặt</Text>
           <Text style={styles.emptySubtext}>Đặt lịch rửa xe ngay hôm nay</Text>
-          <Pressable
-            style={styles.emptyButton}
-            onPress={() => setShowModal(true)}>
-            <Text style={styles.emptyButtonText}>Đặt lịch ngay</Text>
-          </Pressable>
+          {user?.role === 'customer' && (
+            <Pressable
+              style={styles.emptyButton}
+              onPress={() => setShowModal(true)}>
+              <Text style={styles.emptyButtonText}>Đặt lịch ngay</Text>
+            </Pressable>
+          )}
         </View>
       ) : (
         <FlatList
@@ -283,12 +323,16 @@ function computePromotionDiscount(basePrice: number, promotion: Promotion): numb
   return Math.min(Math.max(0, raw), maxDiscount);
 }
 
-function estimateBookingPrice(basePrice: number, promotion?: Promotion | null) {
-  const discount = promotion ? computePromotionDiscount(basePrice, promotion) : 0;
+function estimateBookingPrice(basePrice: number, promotion?: Promotion | null, tierDiscountPct: number = 0) {
+  const tierDiscount = Math.round(basePrice * (tierDiscountPct / 100));
+  const priceAfterTier = basePrice - tierDiscount;
+  const promoDiscount = promotion ? computePromotionDiscount(priceAfterTier, promotion) : 0;
   return {
     basePrice,
-    discount,
-    finalPrice: Math.max(0, basePrice - discount),
+    tierDiscount,
+    promoDiscount,
+    discount: tierDiscount + promoDiscount,
+    finalPrice: Math.max(0, basePrice - (tierDiscount + promoDiscount)),
   };
 }
 
@@ -296,6 +340,20 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
+
+  const { user } = useAuth();
+
+  const tierDiscountPercentage = useMemo(() => {
+    const tier = user?.role_data?.tier_id;
+    if (tier && typeof tier === 'object' && 'discount_percentage' in tier) {
+      return (tier as any).discount_percentage || 0;
+    }
+    const points = user?.role_data?.membership_points ?? 0;
+    if (points >= 600) return 15;
+    if (points >= 300) return 10;
+    if (points >= 100) return 5;
+    return 0;
+  }, [user]);
 
   // Form options data
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -308,6 +366,10 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
+
+  // AI Recommendation values
+  const [recommendation, setRecommendation] = useState<any>(null);
+  const [loadingRecommendation, setLoadingRecommendation] = useState(false);
 
   // Step 2 values
   const [activeTab, setActiveTab] = useState<'combo' | 'single'>('combo');
@@ -409,7 +471,10 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
         setComboPackages(combosWithServices);
 
         // Set default selects
-        if (branchList.length > 0 && branchList[0]._id) {
+        const firstActiveBranch = branchList.find(b => b.is_active !== false);
+        if (firstActiveBranch && firstActiveBranch._id) {
+          setSelectedBranchId(firstActiveBranch._id);
+        } else if (branchList.length > 0 && branchList[0]._id) {
           setSelectedBranchId(branchList[0]._id);
         }
         if (vehicleRes.vehicles.length > 0 && vehicleRes.vehicles[0]._id) {
@@ -441,6 +506,99 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
     }
   }, [availableSlots, selectedTime]);
 
+  // Fetch AI recommendation when vehicle or branch changes
+  useEffect(() => {
+    if (!visible || !selectedVehicleId) {
+      setRecommendation(null);
+      return;
+    }
+
+    let isMounted = true;
+    const fetchReco = async () => {
+      setLoadingRecommendation(true);
+      try {
+        const res = await bookingService.getRecommendation(selectedVehicleId, selectedBranchId || undefined);
+        if (isMounted) {
+          setRecommendation(res);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setRecommendation(null);
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingRecommendation(false);
+        }
+      }
+    };
+
+    fetchReco();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedVehicleId, selectedBranchId, visible]);
+
+  const handleApplyRecommendation = async () => {
+    if (!recommendation) return;
+
+    // 1. Auto-fill branch
+    if (recommendation.branch_id) {
+      setSelectedBranchId(recommendation.branch_id);
+    }
+
+    // 2. Auto-fill time
+    if (recommendation.suggested_scheduled_at) {
+      const d = new Date(recommendation.suggested_scheduled_at);
+      const yyyy = d.getFullYear();
+      const MM = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      
+      setSelectedDate(`${yyyy}-${MM}-${dd}`);
+      setSelectedTime(`${hh}:${mm}`);
+    }
+
+    // 3. Auto-fill combo/services
+    let comboId = '';
+    const serviceIds: string[] = [];
+    if (Array.isArray(recommendation.recommended_items)) {
+      recommendation.recommended_items.forEach((item: any) => {
+        if (item.service_package_id) {
+          comboId = item.service_package_id;
+        } else if (item.service_id) {
+          serviceIds.push(item.service_id);
+        }
+      });
+    }
+    setSelectedComboId(comboId);
+    setSelectedServiceIds(serviceIds);
+
+    // 4. Auto-fill promotion
+    if (recommendation.applicable_promotion) {
+      const promo = recommendation.applicable_promotion;
+      setPromoCode(promo.code || promo.promotion_code || '');
+      setValidatingPromo(true);
+      setPromoError('');
+      try {
+        const { promotion, message } = await promotionService.validateCode(promo.code || promo.promotion_code);
+        setValidatedPromo(promotion);
+        setPromoCode(promotion.promotion_code);
+      } catch (err: any) {
+        setValidatedPromo(null);
+        setPromoError(err.message || 'Mã khuyến mãi không hợp lệ');
+      } finally {
+        setValidatingPromo(false);
+      }
+    } else {
+      setValidatedPromo(null);
+      setPromoCode('');
+    }
+
+    Alert.alert('Thành công', 'Đã áp dụng cấu hình Gợi ý Thông minh!');
+    setStep(2);
+  };
+
   const selectedCombo = useMemo(() => {
     return comboPackages.find(c => (c._id || c.id) === selectedComboId);
   }, [comboPackages, selectedComboId]);
@@ -468,8 +626,8 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
     });
 
     if (totalBasePrice === 0) return null;
-    return estimateBookingPrice(totalBasePrice, validatedPromo);
-  }, [selectedServiceIds, selectedCombo, validatedPromo, individualServices, includedServiceIdsInCombo]);
+    return estimateBookingPrice(totalBasePrice, validatedPromo, tierDiscountPercentage);
+  }, [selectedServiceIds, selectedCombo, validatedPromo, individualServices, includedServiceIdsInCombo, tierDiscountPercentage]);
 
   const handleApplyPromotion = async () => {
     if (!promoCode.trim()) {
@@ -678,20 +836,33 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.cardScroll}>
                       {branches.map((b) => {
                         const isSelected = selectedBranchId === b._id;
+                        const isInactive = b.is_active === false;
                         const address = b.branch_address
                           ? `${b.branch_address.street}, ${b.branch_address.district}, ${b.branch_address.city}`
                           : 'Chưa có địa chỉ';
                         return (
                           <Pressable
                             key={b._id}
+                            disabled={isInactive}
                             onPress={() => setSelectedBranchId(b._id || '')}
-                            style={[styles.branchCard, isSelected && styles.branchCardActive]}>
+                            style={[
+                              styles.branchCard,
+                              isSelected && styles.branchCardActive,
+                              isInactive && styles.branchCardInactive,
+                            ]}>
                             <View style={styles.cardSelectHeader}>
-                              <Text style={styles.branchTitle}>Chi nhánh {b.branch_address?.district}</Text>
+                              <Text style={[styles.branchTitle, isInactive && styles.textInactive]}>
+                                Chi nhánh {b.branch_address?.district}
+                              </Text>
                               {isSelected && <MaterialCommunityIcons name="check-circle" size={18} color="#06B6D4" />}
+                              {isInactive && (
+                                <View style={styles.inlineStatusBadgeInactive}>
+                                  <Text style={styles.inlineStatusBadgeInactiveText}>Tạm đóng</Text>
+                                </View>
+                              )}
                             </View>
-                            <Text style={styles.branchAddress} numberOfLines={2}>{address}</Text>
-                            <Text style={styles.branchPhone}>📞 {b.branch_phone || 'N/A'}</Text>
+                            <Text style={[styles.branchAddress, isInactive && styles.textInactive]} numberOfLines={2}>{address}</Text>
+                            <Text style={[styles.branchPhone, isInactive && styles.textInactive]}>📞 {b.branch_phone || 'N/A'}</Text>
                           </Pressable>
                         );
                       })}
@@ -737,6 +908,65 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
                       </ScrollView>
                     )}
                   </View>
+
+                  {/* Auto-Pilot Booking Gợi ý AI */}
+                  {loadingRecommendation && (
+                    <View style={styles.aiSkeleton}>
+                      <View style={styles.aiSkeletonLine1} />
+                      <View style={styles.aiSkeletonLine2} />
+                    </View>
+                  )}
+
+                  {!loadingRecommendation && recommendation && (
+                    <View style={styles.aiCard}>
+                      <View style={styles.aiHeader}>
+                        <View style={styles.aiIconContainer}>
+                          <Ionicons name="sparkles" size={18} color="#4F46E5" />
+                        </View>
+                        <Text style={styles.aiTitle}>Auto-Pilot Booking</Text>
+                      </View>
+                      <Text style={styles.aiReason}>"{recommendation.reason}"</Text>
+                      
+                      <View style={styles.aiDetailsBox}>
+                        <View style={styles.aiDetailRow}>
+                          <Text style={styles.aiDetailLabel}>Dịch vụ:</Text>
+                          <Text style={styles.aiDetailValue} numberOfLines={2}>
+                            {Array.isArray(recommendation.recommended_items)
+                              ? recommendation.recommended_items.map((i: any) => i.name).join(', ')
+                              : 'Chưa có gợi ý'}
+                          </Text>
+                        </View>
+                        {recommendation.suggested_scheduled_at && (
+                          <View style={styles.aiDetailRow}>
+                            <Text style={styles.aiDetailLabel}>Khung giờ sớm nhất:</Text>
+                            <Text style={styles.aiDetailValue}>
+                              {(() => {
+                                const d = new Date(recommendation.suggested_scheduled_at);
+                                const hh = String(d.getHours()).padStart(2, '0');
+                                const mm = String(d.getMinutes()).padStart(2, '0');
+                                return `${hh}:${mm} (${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()})`;
+                              })()}
+                            </Text>
+                          </View>
+                        )}
+                        {recommendation.applicable_promotion && (
+                          <View style={styles.aiDetailRow}>
+                            <Text style={styles.aiDetailLabel}>Khuyến mãi:</Text>
+                            <Text style={[styles.aiDetailValue, { color: '#EF4444' }]}>
+                              {recommendation.applicable_promotion.code || recommendation.applicable_promotion.promotion_code}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <Pressable 
+                        style={({ pressed }) => [styles.aiButton, pressed && { opacity: 0.8 }]}
+                        onPress={handleApplyRecommendation}
+                      >
+                        <Text style={styles.aiButtonText}>Áp dụng nhanh & Tiếp tục</Text>
+                      </Pressable>
+                    </View>
+                  )}
 
                   {/* Select Date and Time */}
                   <View style={styles.formGroup}>
@@ -1045,11 +1275,20 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
                           <Text style={styles.priceValue}>{priceEstimate.basePrice.toLocaleString('vi-VN')} đ</Text>
                         </View>
 
-                        {priceEstimate.discount > 0 && (
+                        {priceEstimate.tierDiscount > 0 && (
                           <View style={styles.priceItem}>
-                            <Text style={styles.priceLabel}>Giảm giá</Text>
+                            <Text style={styles.priceLabel}>Ưu đãi hạng ({tierDiscountPercentage}%)</Text>
                             <Text style={styles.priceValueDiscount}>
-                              - {priceEstimate.discount.toLocaleString('vi-VN')} đ
+                              - {priceEstimate.tierDiscount.toLocaleString('vi-VN')} đ
+                            </Text>
+                          </View>
+                        )}
+
+                        {priceEstimate.promoDiscount > 0 && (
+                          <View style={styles.priceItem}>
+                            <Text style={styles.priceLabel}>Khuyến mãi</Text>
+                            <Text style={styles.priceValueDiscount}>
+                              - {priceEstimate.promoDiscount.toLocaleString('vi-VN')} đ
                             </Text>
                           </View>
                         )}
@@ -1453,6 +1692,31 @@ const styles = StyleSheet.create({
   branchCardActive: {
     borderColor: '#06B6D4',
     backgroundColor: '#F0FDFA',
+  },
+
+  branchCardInactive: {
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FAFC',
+    opacity: 0.65,
+  },
+
+  inlineStatusBadgeInactive: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FEE2E2',
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+
+  inlineStatusBadgeInactiveText: {
+    color: '#EF4444',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
+  textInactive: {
+    color: '#94A3B8',
   },
 
   cardSelectHeader: {
@@ -2094,5 +2358,108 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+
+  // AI Recommendation Card Styles
+  aiCard: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#C7D2FE',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    marginHorizontal: 16,
+  },
+  aiHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  aiIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#E0E7FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#312E81',
+  },
+  aiReason: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    color: '#4338CA',
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  aiDetailsBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E0E7FF',
+    gap: 8,
+    marginBottom: 12,
+  },
+  aiDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  aiDetailLabel: {
+    fontSize: 13,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  aiDetailValue: {
+    fontSize: 13,
+    color: '#1E293B',
+    fontWeight: '700',
+    flex: 1,
+    textAlign: 'right',
+    marginLeft: 10,
+  },
+  aiButton: {
+    backgroundColor: '#4F46E5',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  aiButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  aiSkeleton: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 16,
+    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    marginBottom: 16,
+    marginHorizontal: 16,
+    gap: 10,
+  },
+  aiSkeletonLine1: {
+    height: 16,
+    backgroundColor: '#CBD5E1',
+    borderRadius: 4,
+    width: '40%',
+  },
+  aiSkeletonLine2: {
+    height: 12,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
+    width: '80%',
   },
 });

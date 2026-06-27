@@ -9,7 +9,7 @@ import { useAuth } from '@/hooks/useAuthService';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
-  const { isAuthenticated } = useAuth(); //  Lấy từ context, tự động update khi login/logout
+  const { isAuthenticated, user } = useAuth(); //  Lấy từ context, tự động update khi login/logout
 
   return (
     <Tabs
@@ -28,32 +28,12 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Auth - Visible only when NOT authenticated */}
-      <Tabs.Screen
-        name="auth"
-        options={{
-          title: 'Đăng nhập',
-          href: isAuthenticated ? null : undefined,
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.crop.circle" color={color} />,
-        }}
-      />
-
-      {/* Profile - Visible only when authenticated */}
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Tài khoản',
-          href: !isAuthenticated ? null : undefined,
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.crop.circle" color={color} />,
-        }}
-      />
-
-      {/* Vehicles - Visible only when authenticated */}
+      {/* Vehicles - Visible only when authenticated and is customer */}
       <Tabs.Screen
         name="vehicles"
         options={{
           title: 'Phương tiện',
-          href: !isAuthenticated ? null : undefined,
+          href: (!isAuthenticated || user?.role !== 'customer') ? null : undefined,
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="car.fill" color={color} />,
         }}
       />
@@ -75,6 +55,26 @@ export default function TabLayout() {
           title: 'Lịch sử',
           href: !isAuthenticated ? null : undefined,
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="clock.fill" color={color} />,
+        }}
+      />
+
+      {/* Profile - Visible only when authenticated */}
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Tài khoản',
+          href: !isAuthenticated ? null : undefined,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.crop.circle" color={color} />,
+        }}
+      />
+
+      {/* Auth - Visible only when NOT authenticated */}
+      <Tabs.Screen
+        name="auth"
+        options={{
+          title: 'Đăng nhập',
+          href: isAuthenticated ? null : undefined,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.crop.circle" color={color} />,
         }}
       />
     </Tabs>
