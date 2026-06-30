@@ -21,7 +21,7 @@ export interface Booking {
   completed_at?: string | null;
   cancelled_at?: string | null;
   cancellation_reason?: string | null;
-  branch: {
+  branch?: {
     _id: string;
     branch_phone?: string;
     branch_address?: {
@@ -31,17 +31,41 @@ export interface Booking {
       city: string;
     };
   };
-  vehicle: {
+  branch_id?: {
+    _id: string;
+    branch_phone?: string;
+    branch_address?: {
+      street: string;
+      ward: string;
+      district: string;
+      city: string;
+    };
+  };
+  vehicle?: {
     _id: string;
     license_plate: string;
     vehicle_model: string;
     color?: string;
+    plate_number?: string;
+  };
+  vehicle_id?: {
+    _id: string;
+    license_plate: string;
+    vehicle_model: string;
+    color?: string;
+    plate_number?: string;
   };
   services: Array<{
     _id: string;
     price_snapshot: number;
     duration_snapshot: number;
-    service: {
+    service?: {
+      _id: string;
+      service_name: string;
+      service_price: number;
+      duration_minutes: number;
+    };
+    service_id?: {
       _id: string;
       service_name: string;
       service_price: number;
@@ -51,6 +75,15 @@ export interface Booking {
       _id: string;
       package_name: string;
       package_discount_percentage: number;
+      service_name?: string;
+      name?: string;
+    } | null;
+    service_package_id?: {
+      _id: string;
+      package_name: string;
+      package_discount_percentage: number;
+      service_name?: string;
+      name?: string;
     } | null;
   }>;
   vat_requested?: boolean;
@@ -227,6 +260,25 @@ class BookingService {
       console.error('Error getting recommendation in Mobile:', error);
       throw error;
     }
+  }
+
+  async getChecklist(appointmentId: string): Promise<any | null> {
+    try {
+      const response = await this.axiosInstance.get<{ success: boolean; data: any }>(
+        `/booking-checklists/appointment/${appointmentId}`
+      );
+      return response.data?.data || response.data;
+    } catch (error: any) {
+      if (error.response && error.response.status === 404) {
+        return null;
+      }
+      console.error(`Error fetching checklist for booking ${appointmentId} in Mobile:`, error);
+      throw error;
+    }
+  }
+
+  getChecklistPdfUrl(checklistId: string): string {
+    return `${API_BASE_URL}/booking-checklists/${checklistId}/export-pdf`;
   }
 }
 
