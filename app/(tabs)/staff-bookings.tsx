@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,10 @@ import {
   Platform,
   StatusBar,
   ScrollView,
+  Linking,
 } from 'react-native';
+import CreateChecklistModal from '../../components/CreateChecklistModal';
+import ViewChecklistModal from '../../components/ViewChecklistModal';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -82,7 +85,13 @@ export default function StaffBookingsScreen() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('pending');
+  const [activeSubFilter, setActiveSubFilter] = useState<'all' | 'confirmed' | 'checked_in' | 'in_progress' | 'washed'>('all');
+  const [showSubFilterDropdown, setShowSubFilterDropdown] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [createChecklistBooking, setCreateChecklistBooking] = useState<Booking | null>(null);
+  const [viewChecklistBooking, setViewChecklistBooking] = useState<Booking | null>(null);
+  const [checklist, setChecklist] = useState<any | null>(null);
+  const [loadingChecklist, setLoadingChecklist] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
   const fetchBookings = async () => {
@@ -107,8 +116,43 @@ export default function StaffBookingsScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchBookings();
-    }, [])
+    }, [user])
   );
+
+  useEffect(() => {
+    if (selectedBooking) {
+      const fetchChecklist = async () => {
+        setLoadingChecklist(true);
+        try {
+          const data = await bookingService.getChecklist(selectedBooking._id);
+          setChecklist(data);
+        } catch (error) {
+          console.error('Error fetching checklist on staff bookings:', error);
+          setChecklist(null);
+        } finally {
+          setLoadingChecklist(false);
+        }
+      };
+      fetchChecklist();
+    } else if (!viewChecklistBooking && !createChecklistBooking) {
+      setChecklist(null);
+    }
+  }, [selectedBooking, viewChecklistBooking, createChecklistBooking]);
+
+  const handleDownloadPdf = async (checklistId: string) => {
+    try {
+      const url = bookingService.getChecklistPdfUrl(checklistId);
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Lỗi', 'Không thể mở liên kết tải PDF');
+      }
+    } catch (error) {
+      console.error('Error opening PDF URL:', error);
+      Alert.alert('Lỗi', 'Có lỗi xảy ra khi tải PDF');
+    }
+  };
 
   const handleUpdateStatus = async (bookingId: string, action: 'confirm' | 'checkin' | 'start' | 'washed' | 'complete') => {
     let actionText = '';
@@ -156,7 +200,10 @@ export default function StaffBookingsScreen() {
     if (activeTab === 'pending') {
       return status === 'pending';
     } else if (activeTab === 'active') {
-      return status === 'confirmed' || status === 'checked_in' || status === 'in_progress' || (status as string) === 'washed';
+      const isStatusActive = status === 'confirmed' || status === 'checked_in' || status === 'in_progress' || (status as string) === 'washed';
+      if (!isStatusActive) return false;
+      if (activeSubFilter === 'all') return true;
+      return status === activeSubFilter;
     } else if (activeTab === 'completed') {
       return status === 'completed';
     } else if (activeTab === 'cancelled') {
@@ -178,11 +225,11 @@ export default function StaffBookingsScreen() {
   const getBookingServicesList = (services: Booking['services']) => {
     if (!services || !Array.isArray(services)) return [];
     const list: { name: string; isCombo: boolean }[] = [];
-    
+
     services.forEach((s: any) => {
       const pkg = s.service_package_id || s.service_package;
       const svc = s.service_id || s.service;
-      
+
       if (pkg && typeof pkg === 'object') {
         const pName = (pkg as any).package_name || (pkg as any).service_name || (pkg as any).name;
         if (pName && !list.some(item => item.name === pName && item.isCombo)) {
@@ -195,7 +242,7 @@ export default function StaffBookingsScreen() {
         }
       }
     });
-    
+
     return list;
   };
 
@@ -286,10 +333,10 @@ export default function StaffBookingsScreen() {
           <View
             style={[
               styles.statusBadge,
-              { 
-                backgroundColor: statusStyles.bg, 
+              {
+                backgroundColor: statusStyles.bg,
                 borderColor: statusStyles.border,
-                borderWidth: 1 
+                borderWidth: 1
               },
             ]}>
             <Text style={[styles.statusDot, { color: statusStyles.text }]}>●</Text>
@@ -339,14 +386,14 @@ export default function StaffBookingsScreen() {
           {bookingServices.length > 0 && (
             <View style={styles.servicesWrap}>
               {bookingServices.map((svc, i) => (
-                <View 
-                  key={i} 
+                <View
+                  key={i}
                   style={[
-                    styles.serviceChip, 
+                    styles.serviceChip,
                     svc.isCombo ? styles.comboServiceChip : styles.singleServiceChip
                   ]}
                 >
-                  <Text 
+                  <Text
                     style={[
                       styles.serviceChipText,
                       svc.isCombo ? styles.comboServiceChipText : styles.singleServiceChipText
@@ -384,14 +431,14 @@ export default function StaffBookingsScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Quản Lý Lịch Hẹn</Text>
           <Text style={styles.headerSub}>Chào, {user?.full_name || 'Nhân viên'} (Staff)</Text>
         </View>
-        <Pressable 
+        <Pressable
           style={({ pressed }) => [styles.refreshBtn, pressed && { opacity: 0.7 }]}
           onPress={fetchBookings}>
           <Ionicons name="refresh" size={20} color={CYAN} />
@@ -406,11 +453,14 @@ export default function StaffBookingsScreen() {
             <Pressable
               key={tab.key}
               style={[styles.tabButton, isActive && styles.tabButtonActive]}
-              onPress={() => setActiveTab(tab.key)}>
-              <MaterialCommunityIcons 
-                name={tab.icon} 
-                size={16} 
-                color={isActive ? '#FFFFFF' : GRAY} 
+              onPress={() => {
+                setActiveTab(tab.key);
+                if (tab.key === 'active') setActiveSubFilter('all');
+              }}>
+              <MaterialCommunityIcons
+                name={tab.icon}
+                size={16}
+                color={isActive ? '#FFFFFF' : GRAY}
                 style={{ marginBottom: 2 }}
               />
               <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
@@ -420,6 +470,60 @@ export default function StaffBookingsScreen() {
           );
         })}
       </View>
+
+      {/* Sub Filters for Active Tab (Dropdown style) */}
+      {activeTab === 'active' && (
+        <>
+          <Pressable
+            style={styles.dropdownButton}
+            onPress={() => setShowSubFilterDropdown(true)}
+          >
+            <Text style={styles.dropdownButtonText}>
+              Trạng thái: <Text style={{ color: CYAN, fontWeight: '700' }}>
+                {
+                  activeSubFilter === 'all' ? 'Tất cả' :
+                    activeSubFilter === 'confirmed' ? 'Đã xác nhận' :
+                      activeSubFilter === 'checked_in' ? 'Đã nhận xe' :
+                        activeSubFilter === 'in_progress' ? 'Đang rửa' :
+                          'Rửa xong'
+                }
+              </Text>
+            </Text>
+            <MaterialCommunityIcons name="chevron-down" size={20} color={DARK} />
+          </Pressable>
+
+          <Modal visible={showSubFilterDropdown} transparent animationType="fade" onRequestClose={() => setShowSubFilterDropdown(false)}>
+            <View style={styles.dropdownOverlay}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowSubFilterDropdown(false)} />
+              <View style={styles.dropdownMenu}>
+                {[
+                  { key: 'all', label: 'Tất cả' },
+                  { key: 'confirmed', label: 'Đã xác nhận' },
+                  { key: 'checked_in', label: 'Đã nhận xe' },
+                  { key: 'in_progress', label: 'Đang rửa' },
+                  { key: 'washed', label: 'Rửa xong' },
+                ].map((filter, index) => (
+                  <Pressable
+                    key={filter.key}
+                    style={[styles.dropdownItem, index !== 4 && styles.dropdownItemBorder]}
+                    onPress={() => {
+                      setActiveSubFilter(filter.key as any);
+                      setShowSubFilterDropdown(false);
+                    }}
+                  >
+                    <Text style={[styles.dropdownItemText, activeSubFilter === filter.key && styles.dropdownItemTextActive]}>
+                      {filter.label}
+                    </Text>
+                    {activeSubFilter === filter.key && (
+                      <MaterialCommunityIcons name="check" size={18} color={CYAN} />
+                    )}
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          </Modal>
+        </>
+      )}
 
       {/* Booking List */}
       {loading ? (
@@ -453,15 +557,42 @@ export default function StaffBookingsScreen() {
         onRequestClose={() => setSelectedBooking(null)}>
         <View style={styles.modalOverlay}>
           <Pressable style={styles.modalBackdrop} onPress={() => setSelectedBooking(null)} />
-          
+
           <View style={styles.modalContent}>
             {selectedBooking && (
               <>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Chi tiết lịch hẹn</Text>
-                  <Pressable onPress={() => setSelectedBooking(null)} style={styles.closeBtn}>
-                    <Ionicons name="close" size={24} color={DARK} />
-                  </Pressable>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    {loadingChecklist ? (
+                      <ActivityIndicator size="small" color="#0891B2" />
+                    ) : checklist ? (
+                      <Pressable
+                        style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E0F2FE', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+                        onPress={() => {
+                          setViewChecklistBooking(selectedBooking);
+                          setSelectedBooking(null);
+                        }}
+                      >
+                        <Ionicons name="document-text" size={16} color="#0369A1" style={{ marginRight: 4 }} />
+                        <Text style={{ color: '#0369A1', fontSize: 13, fontWeight: '700' }}>Biên bản</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable
+                        style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0891B2', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+                        onPress={() => {
+                          setCreateChecklistBooking(selectedBooking);
+                          setSelectedBooking(null);
+                        }}
+                      >
+                        <Ionicons name="document-text-outline" size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
+                        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Tạo Biên bản</Text>
+                      </Pressable>
+                    )}
+                    <Pressable onPress={() => setSelectedBooking(null)} style={styles.closeBtn}>
+                      <Ionicons name="close" size={24} color={DARK} />
+                    </Pressable>
+                  </View>
                 </View>
 
                 <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
@@ -470,10 +601,10 @@ export default function StaffBookingsScreen() {
                     <View style={styles.modalStatusRow}>
                       <View style={[
                         styles.statusBadge,
-                        { 
+                        {
                           backgroundColor: getStatusStyles(selectedBooking.booking_status).bg,
                           borderColor: getStatusStyles(selectedBooking.booking_status).border,
-                          borderWidth: 1 
+                          borderWidth: 1
                         }
                       ]}>
                         <Text style={[styles.statusDot, { color: getStatusStyles(selectedBooking.booking_status).text }]}>●</Text>
@@ -534,7 +665,7 @@ export default function StaffBookingsScreen() {
                       {(() => {
                         const combos: Record<string, { name: string, price: number, items: string[] }> = {};
                         const individuals: Array<{ name: string, price: number }> = [];
-                        
+
                         selectedBooking.services.forEach(svc => {
                           const pkg = svc.service_package_id || svc.service_package;
                           const service = svc.service_id || svc.service;
@@ -560,7 +691,7 @@ export default function StaffBookingsScreen() {
                         return (
                           <View style={{ width: '100%', gap: 10 }}>
                             <Text style={[styles.infoLabel, { fontSize: 13, marginBottom: 4 }]}>Chi tiết dịch vụ:</Text>
-                            
+
                             {/* Render Combos */}
                             {Object.values(combos).map((combo, idx) => (
                               <View key={`combo-${idx}`} style={{ width: '100%', marginBottom: 8 }}>
@@ -637,12 +768,12 @@ export default function StaffBookingsScreen() {
                             const base = selectedBooking.base_price ?? 0;
                             const discPct = selectedBooking.customer_id?.tier_id?.discount_percentage || 0;
                             const otherDisc = selectedBooking.discount_amount || 0;
-                            
+
                             // If final_price is set, use it, else calculate it
                             if (selectedBooking.final_price !== undefined) {
                               return selectedBooking.final_price.toLocaleString('vi-VN');
                             }
-                            
+
                             const finalPrice = Math.max(0, base - Math.round(base * (discPct / 100)) - otherDisc);
                             return finalPrice.toLocaleString('vi-VN');
                           })()} đ
@@ -691,6 +822,32 @@ export default function StaffBookingsScreen() {
           </View>
         </View>
       </Modal>
+
+      {createChecklistBooking && (
+        <CreateChecklistModal
+          booking={createChecklistBooking}
+          isOpen={!!createChecklistBooking}
+          onClose={() => {
+            setCreateChecklistBooking(null);
+            setSelectedBooking(createChecklistBooking); // Re-open detail modal on close
+          }}
+          onSuccess={() => {
+            setCreateChecklistBooking(null);
+            fetchBookings();
+          }}
+        />
+      )}
+
+      {checklist && viewChecklistBooking && (
+        <ViewChecklistModal
+          checklist={checklist}
+          isOpen={!!viewChecklistBooking}
+          onClose={() => {
+            setViewChecklistBooking(null);
+            setSelectedBooking(viewChecklistBooking);
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -1121,6 +1278,55 @@ const styles = StyleSheet.create({
   modalActionBtnText: {
     color: '#FFFFFF',
     fontSize: 15,
+    fontWeight: '700',
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  dropdownButtonText: {
+    fontSize: 14,
+    color: '#475569',
+  },
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'flex-start',
+  },
+  dropdownMenu: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    marginTop: 180,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  dropdownItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  dropdownItemText: {
+    fontSize: 15,
+    color: '#475569',
+  },
+  dropdownItemTextActive: {
+    color: CYAN,
     fontWeight: '700',
   },
 });
