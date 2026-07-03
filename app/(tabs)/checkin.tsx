@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,14 +9,18 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  Platform,
   StatusBar,
   ScrollView,
+  Modal,
+  Platform,
+  Linking,
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../hooks/useAuthService';
 import bookingService, { Booking } from '../../services/bookingService';
+import CreateChecklistModal from '../../components/CreateChecklistModal';
+import ViewChecklistModal from '../../components/ViewChecklistModal';
 
 const ImagePicker: any = require('expo-image-picker');
 
@@ -31,6 +35,33 @@ const GRAY = '#64748B';
 const SURFACE = '#FFFFFF';
 const BG = '#F1F5F9';
 
+// Status badging styles mapping
+const getStatusStyles = (status: Booking['booking_status'] | 'washed') => {
+  switch (status) {
+    case 'pending': return { text: '#F59E0B', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.18)' };
+    case 'confirmed': return { text: '#2563EB', bg: 'rgba(39,130,246,0.08)', border: 'rgba(39,130,246,0.18)' };
+    case 'checked_in': return { text: PURPLE, bg: 'rgba(139,92,246,0.08)', border: 'rgba(139,92,246,0.18)' };
+    case 'in_progress': return { text: '#DB2777', bg: 'rgba(236,72,153,0.08)', border: 'rgba(236,72,153,0.18)' };
+    case 'washed': return { text: '#0D9488', bg: 'rgba(13,148,136,0.08)', border: 'rgba(13,148,136,0.18)' };
+    case 'completed': return { text: GREEN, bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.18)' };
+    case 'cancelled': return { text: ROSE, bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.18)' };
+    default: return { text: '#4B5563', bg: 'rgba(107,114,128,0.08)', border: 'rgba(107,114,128,0.18)' };
+  }
+};
+
+const getStatusLabel = (status: any) => {
+  switch (status) {
+    case 'pending': return 'Chờ xác nhận';
+    case 'confirmed': return 'Đã xác nhận';
+    case 'checked_in': return 'Đã check-in';
+    case 'in_progress': return 'Đang rửa xe';
+    case 'washed': return 'Rửa xong';
+    case 'completed': return 'Hoàn thành';
+    case 'cancelled': return 'Đã hủy';
+    default: return status;
+  }
+};
+
 export default function CheckinScreen() {
   const { user } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -38,6 +69,12 @@ export default function CheckinScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [manualPlate, setManualPlate] = useState('');
   const [isScanning, setIsScanning] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [createChecklistBooking, setCreateChecklistBooking] = useState<Booking | null>(null);
+  const [viewChecklistBooking, setViewChecklistBooking] = useState<Booking | null>(null);
+  
+  const [checklist, setChecklist] = useState<any | null>(null);
+  const [loadingChecklist, setLoadingChecklist] = useState(false);
 
   const fetchBookings = async () => {
     try {
@@ -58,6 +95,41 @@ export default function CheckinScreen() {
       fetchBookings();
     }, [])
   );
+
+  useEffect(() => {
+    if (selectedBooking) {
+      const fetchChecklist = async () => {
+        setLoadingChecklist(true);
+        try {
+          const data = await bookingService.getChecklist(selectedBooking._id);
+          setChecklist(data);
+        } catch (error) {
+          console.error('Error fetching checklist on checkin:', error);
+          setChecklist(null);
+        } finally {
+          setLoadingChecklist(false);
+        }
+      };
+      fetchChecklist();
+    } else if (!viewChecklistBooking && !createChecklistBooking) {
+      setChecklist(null);
+    }
+  }, [selectedBooking, viewChecklistBooking, createChecklistBooking]);
+
+  const handleDownloadPdf = async (checklistId: string) => {
+    try {
+      const url = bookingService.getChecklistPdfUrl(checklistId);
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Lỗi', 'Không thể mở liên kết tải PDF');
+      }
+    } catch (error) {
+      console.error('Error opening PDF URL:', error);
+      Alert.alert('Lỗi', 'Có lỗi xảy ra khi tải PDF');
+    }
+  };
 
   const handleManualCheckin = async () => {
     const plate = manualPlate.trim().toLowerCase();
@@ -130,7 +202,7 @@ export default function CheckinScreen() {
       const fileName = `checkin_camera.${fileExt}`;
 
       const response = await bookingService.checkinWithCamera(imageUri, mimeType, fileName);
-      
+
       if (response.success) {
         Alert.alert(
           'Check-in Thành Công!',
@@ -148,7 +220,7 @@ export default function CheckinScreen() {
       }
     } catch (err: any) {
       console.error('Scan error:', err);
-      
+
       const responseData = err.response?.data;
       const licensePlate = responseData?.license_plate || responseData?.data?.license_plate || '';
       const message = responseData?.message || err.message || 'Lỗi kết nối máy chủ AI hoặc hệ thống.';
@@ -195,6 +267,7 @@ export default function CheckinScreen() {
               setIsScanning(true);
               await bookingService.checkin(bookingId);
               Alert.alert('Thành công', 'Nhận xe thành công');
+              setSelectedBooking(null);
               fetchBookings();
             } catch (err: any) {
               Alert.alert('Lỗi', err.message || 'Check-in thất bại');
@@ -233,7 +306,7 @@ export default function CheckinScreen() {
     const serviceName = item.services[0]?.service_package_id?.package_name || item.services[0]?.service_package?.name || item.services[0]?.service_id?.service_name || item.services[0]?.service?.service_name || 'Dịch vụ';
 
     return (
-      <View style={styles.bookingCard}>
+      <Pressable style={styles.bookingCard} onPress={() => setSelectedBooking(item)}>
         <View style={styles.cardHeader}>
           <View style={styles.plateContainer}>
             <View style={styles.plateInnerBorder}>
@@ -261,27 +334,27 @@ export default function CheckinScreen() {
           </View>
         </View>
 
-        <Pressable 
+        <Pressable
           style={({ pressed }) => [styles.cardBtn, pressed && { opacity: 0.85 }]}
           onPress={() => handleActionCheckin(item._id, plate)}>
           <MaterialCommunityIcons name="check-circle-outline" size={16} color="#FFFFFF" />
           <Text style={styles.cardBtnText}>Xác nhận Nhận xe</Text>
         </Pressable>
-      </View>
+      </Pressable>
     );
   };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Check-in Xe</Text>
           <Text style={styles.headerSub}>Điểm danh và nhận xe của khách hàng</Text>
         </View>
-        <Pressable 
+        <Pressable
           style={({ pressed }) => [styles.refreshBtn, pressed && { opacity: 0.7 }]}
           onPress={fetchBookings}>
           <Ionicons name="refresh" size={20} color={PURPLE} />
@@ -299,7 +372,7 @@ export default function CheckinScreen() {
             </View>
             <Text style={styles.actionTitle}>Quét Biển Số Tự Động</Text>
             <Text style={styles.actionDesc}>Chụp ảnh biển số xe để hệ thống tự động tìm lịch hẹn và làm thủ tục check-in.</Text>
-            
+
             {isScanning ? (
               <View style={[styles.scanBtn, styles.scanBtnDisabled]}>
                 <ActivityIndicator size="small" color="#FFFFFF" />
@@ -327,7 +400,7 @@ export default function CheckinScreen() {
               autoCapitalize="characters"
               editable={!isScanning}
             />
-            <Pressable 
+            <Pressable
               style={({ pressed }) => [styles.inputBtn, pressed && { opacity: 0.85 }, isScanning && styles.inputBtnDisabled]}
               onPress={handleManualCheckin}
               disabled={isScanning}>
@@ -384,6 +457,280 @@ export default function CheckinScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Booking Detail Modal */}
+      <Modal
+        visible={!!selectedBooking}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSelectedBooking(null)}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setSelectedBooking(null)} />
+
+          <View style={styles.modalContent}>
+            {selectedBooking && (
+              <>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Chi tiết lịch hẹn</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                     {loadingChecklist ? (
+                       <ActivityIndicator size="small" color="#0891B2" />
+                     ) : checklist ? (
+                       <Pressable 
+                         style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E0F2FE', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+                         onPress={() => {
+                           setViewChecklistBooking(selectedBooking);
+                           setSelectedBooking(null);
+                         }}
+                       >
+                         <Ionicons name="document-text" size={16} color="#0369A1" style={{ marginRight: 4 }} />
+                         <Text style={{ color: '#0369A1', fontSize: 13, fontWeight: '700' }}>Biên bản</Text>
+                       </Pressable>
+                     ) : (
+                       <Pressable 
+                         style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0891B2', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+                         onPress={() => {
+                           setCreateChecklistBooking(selectedBooking);
+                           setSelectedBooking(null);
+                         }}
+                       >
+                         <Ionicons name="document-text-outline" size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
+                         <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Tạo Biên bản</Text>
+                       </Pressable>
+                     )}
+                     <Pressable onPress={() => setSelectedBooking(null)} style={styles.closeBtn}>
+                       <Ionicons name="close" size={24} color={DARK} />
+                     </Pressable>
+                  </View>
+                </View>
+
+                <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>Trạng thái đơn</Text>
+                    <View style={styles.modalStatusRow}>
+                      <View style={[
+                        styles.statusBadge,
+                        {
+                          backgroundColor: getStatusStyles(selectedBooking.booking_status).bg,
+                          borderColor: getStatusStyles(selectedBooking.booking_status).border,
+                          borderWidth: 1
+                        }
+                      ]}>
+                        <Text style={[styles.statusDot, { color: getStatusStyles(selectedBooking.booking_status).text }]}>●</Text>
+                        <Text style={[styles.statusText, { color: getStatusStyles(selectedBooking.booking_status).text }]}>
+                          {getStatusLabel(selectedBooking.booking_status)}
+                        </Text>
+                      </View>
+                      <Text style={styles.modalIdText}>#{selectedBooking._id.toUpperCase()}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>Khách hàng & Phương tiện</Text>
+                    <View style={styles.infoCard}>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Khách hàng:</Text>
+                        <Text style={styles.infoVal}>{selectedBooking.customer_id?.user_id?.full_name || 'Khách vãng lai'}</Text>
+                      </View>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Số điện thoại:</Text>
+                        <Text style={styles.infoVal}>{selectedBooking.customer_id?.user_id?.phone || 'Không có'}</Text>
+                      </View>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Biển số xe:</Text>
+                        <Text style={[styles.infoVal, { fontWeight: '700' }]}>
+                          {selectedBooking.vehicle_id?.license_plate?.toUpperCase() || selectedBooking.vehicle?.license_plate?.toUpperCase() || 'N/A'}
+                        </Text>
+                      </View>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Hiệu xe:</Text>
+                        <Text style={styles.infoVal}>{getVehicleDisplayName(selectedBooking.vehicle_id || selectedBooking.vehicle)}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>Thời gian & Địa điểm</Text>
+                    <View style={styles.infoCard}>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Thời gian hẹn:</Text>
+                        <Text style={styles.infoVal}>
+                          {new Date(selectedBooking.scheduled_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - {new Date(selectedBooking.scheduled_at).toLocaleDateString('vi-VN')}
+                        </Text>
+                      </View>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Cơ sở thực hiện:</Text>
+                        <Text style={styles.infoVal} numberOfLines={2}>
+                          {selectedBooking.branch_id?.branch_address?.street || selectedBooking.branch?.branch_address?.street}, {selectedBooking.branch_id?.branch_address?.district || selectedBooking.branch?.branch_address?.district}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>Dịch vụ & Thanh toán</Text>
+                    <View style={styles.infoCard}>
+                      {(() => {
+                        const combos: Record<string, { name: string, price: number, items: string[] }> = {};
+                        const individuals: Array<{ name: string, price: number }> = [];
+
+                        selectedBooking.services.forEach((svc: any) => {
+                          const pkg = svc.service_package_id || svc.service_package;
+                          const service = svc.service_id || svc.service;
+                          if (pkg) {
+                            const pkgId = pkg._id;
+                            if (!combos[pkgId]) {
+                              combos[pkgId] = {
+                                name: pkg.package_name || pkg.name || pkg.service_name || 'Combo',
+                                price: 0,
+                                items: []
+                              };
+                            }
+                            combos[pkgId].price += svc.price_snapshot;
+                            combos[pkgId].items.push(service?.service_name || 'Dịch vụ');
+                          } else {
+                            individuals.push({
+                              name: service?.service_name || 'Dịch vụ',
+                              price: svc.price_snapshot
+                            });
+                          }
+                        });
+
+                        return (
+                          <View style={{ width: '100%', gap: 10 }}>
+                            <Text style={[styles.infoLabel, { fontSize: 13, marginBottom: 4 }]}>Chi tiết dịch vụ:</Text>
+
+                            {Object.values(combos).map((combo, idx) => (
+                              <View key={`combo-${idx}`} style={{ width: '100%', marginBottom: 8 }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
+                                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0891B2', flex: 1, paddingRight: 8 }}>
+                                    {combo.name}
+                                  </Text>
+                                  <Text style={{ fontSize: 13, fontWeight: '600', color: DARK }}>
+                                    {combo.price.toLocaleString('vi-VN')} đ
+                                  </Text>
+                                </View>
+                                {combo.items.map((subItem, sIdx) => (
+                                  <Text key={`sub-${sIdx}`} style={{ fontSize: 12, color: GRAY, marginLeft: 12, marginTop: 2 }}>
+                                    • {subItem}
+                                  </Text>
+                                ))}
+                              </View>
+                            ))}
+
+                            {individuals.map((ind, idx) => (
+                              <View key={`ind-${idx}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 4 }}>
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: DARK, flex: 1, paddingRight: 8 }}>
+                                  {ind.name}
+                                </Text>
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: DARK }}>
+                                  {ind.price.toLocaleString('vi-VN')} đ
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        );
+                      })()}
+
+                      <View style={styles.divider} />
+
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Tổng phí dịch vụ:</Text>
+                        <Text style={styles.infoVal}>
+                          {(selectedBooking.base_price ?? 0).toLocaleString('vi-VN')} đ
+                        </Text>
+                      </View>
+
+                      {selectedBooking.customer_id?.tier_id?.discount_percentage ? (
+                        <View style={styles.infoRow}>
+                          <Text style={styles.infoLabel}>
+                            Hạng {selectedBooking.customer_id.tier_id.tier_name || 'thành viên'}:
+                          </Text>
+                          <Text style={[styles.infoVal, { color: GREEN }]}>
+                            -{selectedBooking.customer_id.tier_id.discount_percentage}%
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      {selectedBooking.discount_amount ? (
+                        <View style={styles.infoRow}>
+                          <Text style={styles.infoLabel}>Khuyến mãi khác:</Text>
+                          <Text style={[styles.infoVal, { color: GREEN }]}>
+                            -{selectedBooking.discount_amount.toLocaleString('vi-VN')} đ
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      <View style={styles.divider} />
+
+                      <View style={[styles.infoRow, { marginTop: 4 }]}>
+                        <Text style={[styles.infoLabel, { fontWeight: '700', color: DARK }]}>Tổng thanh toán:</Text>
+                        <Text style={[styles.infoVal, { fontWeight: '800', color: ROSE, fontSize: 16 }]}>
+                          {(() => {
+                            const base = selectedBooking.base_price ?? 0;
+                            const discPct = selectedBooking.customer_id?.tier_id?.discount_percentage || 0;
+                            const otherDisc = selectedBooking.discount_amount || 0;
+
+                            if (selectedBooking.final_price !== undefined) {
+                              return selectedBooking.final_price.toLocaleString('vi-VN');
+                            }
+
+                            const finalPrice = Math.max(0, base - Math.round(base * (discPct / 100)) - otherDisc);
+                            return finalPrice.toLocaleString('vi-VN');
+                          })()} đ
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </ScrollView>
+
+                <View style={styles.modalFooter}>
+                  {isScanning ? (
+                    <ActivityIndicator size="small" color={CYAN} style={{ alignSelf: 'center', padding: 12 }} />
+                  ) : (
+                    <Pressable
+                      style={[styles.modalActionBtn, { backgroundColor: PURPLE }]}
+                      onPress={() => {
+                        const plate = selectedBooking.vehicle_id?.license_plate || selectedBooking.vehicle?.license_plate || '';
+                        handleActionCheckin(selectedBooking._id, plate);
+                      }}
+                    >
+                      <Text style={styles.modalActionBtnText}>Xác nhận Nhận xe</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {createChecklistBooking && (
+        <CreateChecklistModal
+          booking={createChecklistBooking}
+          isOpen={!!createChecklistBooking}
+          onClose={() => {
+            setCreateChecklistBooking(null);
+            setSelectedBooking(createChecklistBooking); // Re-open detail modal on close
+          }}
+          onSuccess={() => {
+            setCreateChecklistBooking(null);
+            fetchBookings();
+          }}
+        />
+      )}
+
+      {checklist && viewChecklistBooking && (
+        <ViewChecklistModal
+          checklist={checklist}
+          isOpen={!!viewChecklistBooking}
+          onClose={() => {
+            setViewChecklistBooking(null);
+            setSelectedBooking(viewChecklistBooking);
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -693,6 +1040,133 @@ const styles = StyleSheet.create({
   cardBtnText: {
     color: '#FFFFFF',
     fontSize: 13,
+    fontWeight: '700',
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(15,23,42,0.5)',
+  },
+  modalContent: {
+    backgroundColor: SURFACE,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: DARK,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBody: {
+    marginBottom: 20,
+  },
+  modalSection: {
+    marginBottom: 16,
+  },
+  modalSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: GRAY,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  modalStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  statusDot: {
+    fontSize: 8,
+    marginRight: 4,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  modalIdText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: GRAY,
+  },
+  infoCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  infoLabel: {
+    fontSize: 13,
+    color: GRAY,
+    fontWeight: '500',
+  },
+  infoVal: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: DARK,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 8,
+  },
+  modalFooter: {
+    borderTopWidth: 1,
+    borderColor: '#F1F5F9',
+    paddingTop: 16,
+  },
+  modalActionBtn: {
+    width: '100%',
+    backgroundColor: '#2563EB',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  modalActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '700',
   },
 });

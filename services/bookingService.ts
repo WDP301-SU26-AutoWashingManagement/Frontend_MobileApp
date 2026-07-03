@@ -370,6 +370,46 @@ class BookingService {
   getChecklistPdfUrl(checklistId: string): string {
     return `${API_BASE_URL}/booking-checklists/${checklistId}/export-pdf`;
   }
+
+  async createChecklist(appointmentId: string, items: any[], note: string, images: string[], signatureUri: string | null): Promise<any> {
+    try {
+      const formData = new FormData();
+      formData.append('appointment_id', appointmentId);
+      formData.append('checklist_items', JSON.stringify(items));
+      if (note.trim()) {
+        formData.append('note', note.trim());
+      }
+
+      images.forEach((uri, index) => {
+        const uriParts = uri.split('.');
+        const fileExt = uriParts[uriParts.length - 1] || 'jpg';
+        const mimeType = fileExt === 'jpg' || fileExt === 'jpeg' ? 'image/jpeg' : `image/${fileExt}`;
+        formData.append('images', {
+          uri,
+          type: mimeType,
+          name: `image_${index}.${fileExt}`
+        } as any);
+      });
+
+      if (signatureUri) {
+        formData.append('customer_signature', signatureUri);
+      }
+
+      const response = await this.axiosInstance.post<{ success: boolean; data: any }>(
+        '/booking-checklists',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error creating checklist in Mobile:', error);
+      throw error;
+    }
+  }
 }
 
 export default new BookingService();
