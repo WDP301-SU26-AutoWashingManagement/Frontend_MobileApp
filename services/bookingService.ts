@@ -247,6 +247,96 @@ class BookingService {
     }
   }
 
+  async confirm(bookingId: string): Promise<Booking> {
+    try {
+      const response = await this.axiosInstance.patch<{ success: boolean; data: Booking }>(
+        `/bookings/${bookingId}/confirm`
+      );
+      return response.data.data;
+    } catch (error) {
+      console.error(`Error confirming booking ${bookingId} in Mobile:`, error);
+      throw error;
+    }
+  }
+
+  async checkin(bookingId: string): Promise<Booking> {
+    try {
+      const response = await this.axiosInstance.patch<{ success: boolean; data: Booking }>(
+        `/bookings/${bookingId}/checkin`
+      );
+      return response.data.data;
+    } catch (error) {
+      console.error(`Error checkin booking ${bookingId} in Mobile:`, error);
+      throw error;
+    }
+  }
+
+  async start(bookingId: string): Promise<Booking> {
+    try {
+      const response = await this.axiosInstance.patch<{ success: boolean; data: Booking }>(
+        `/bookings/${bookingId}/start`
+      );
+      return response.data.data;
+    } catch (error) {
+      console.error(`Error starting booking ${bookingId} in Mobile:`, error);
+      throw error;
+    }
+  }
+
+  async washed(bookingId: string): Promise<Booking> {
+    try {
+      const response = await this.axiosInstance.patch<{ success: boolean; data: Booking }>(
+        `/bookings/${bookingId}/washed`
+      );
+      return response.data.data;
+    } catch (error) {
+      console.error(`Error washed booking ${bookingId} in Mobile:`, error);
+      throw error;
+    }
+  }
+
+  async complete(bookingId: string): Promise<Booking> {
+    try {
+      const response = await this.axiosInstance.patch<{ success: boolean; data: Booking }>(
+        `/bookings/${bookingId}/complete`
+      );
+      return response.data.data;
+    } catch (error) {
+      console.error(`Error completing booking ${bookingId} in Mobile:`, error);
+      throw error;
+    }
+  }
+
+  async checkinWithCamera(fileUri: string, mimeType: string, fileName: string): Promise<{
+    success: boolean;
+    message: string;
+    appointment_id?: string;
+    license_plate?: string;
+  }> {
+    try {
+      const formData = new FormData();
+      formData.append('file', {
+        uri: fileUri,
+        type: mimeType || 'image/jpeg',
+        name: fileName || 'photo.jpg',
+      } as any);
+
+      const response = await this.axiosInstance.post<any>(
+        '/checkin/camera',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error checkinWithCamera in Mobile:', error);
+      throw error;
+    }
+  }
+
   async getRecommendation(vehicleId: string, branchId?: string): Promise<any> {
     try {
       const response = await this.axiosInstance.get<{ success: boolean; data: any }>(

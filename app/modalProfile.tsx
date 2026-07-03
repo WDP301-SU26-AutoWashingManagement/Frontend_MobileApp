@@ -332,7 +332,7 @@ export function ProfileLogoutModal(props: {
   visible: boolean; onClose: () => void; loading: boolean; onLogout: () => void;
 }) {
   return (
-    <ModalShell visible={props.visible} onClose={props.onClose} title="Đăng xuất" icon="logout-variant" iconColor="#EF4444">
+    <ModalShell visible={props.visible} onClose={props.onClose} loading={props.loading} title="Đăng xuất" icon="logout-variant">
       <View style={logoutStyles.container}>
         <View style={logoutStyles.iconCircle}>
           <MaterialCommunityIcons name="logout-variant" size={32} color="#EF4444" />
