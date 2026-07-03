@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -27,22 +29,22 @@ import servicePackageService from '../../services/servicePackageService';
 const { width } = Dimensions.get('window');
 
 // Status badging styles mapping
-const getStatusColor = (status: Booking['booking_status']) => {
+const getStatusStyles = (status: Booking['booking_status']) => {
   switch (status) {
     case 'pending':
-      return '#F59E0B'; // Amber
+      return { text: '#D97706', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.18)' };
     case 'confirmed':
-      return '#3B82F6'; // Blue
+      return { text: '#2563EB', bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.18)' };
     case 'checked_in':
-      return '#8B5CF6'; // Purple
+      return { text: '#7C3AED', bg: 'rgba(139,92,246,0.08)', border: 'rgba(139,92,246,0.18)' };
     case 'in_progress':
-      return '#EC4899'; // Pink
+      return { text: '#DB2777', bg: 'rgba(236,72,153,0.08)', border: 'rgba(236,72,153,0.18)' };
     case 'completed':
-      return '#10B981'; // Green
+      return { text: '#059669', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.18)' };
     case 'cancelled':
-      return '#EF4444'; // Red
+      return { text: '#DC2626', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.18)' };
     default:
-      return '#6B7280';
+      return { text: '#4B5563', bg: 'rgba(107,114,128,0.08)', border: 'rgba(107,114,128,0.18)' };
   }
 };
 
@@ -71,6 +73,8 @@ export default function BookingsScreen() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [models, setModels] = useState<any[]>([]);
+  const [makes, setMakes] = useState<any[]>([]);
 
   const tierDiscountPercentage = useMemo(() => {
     const tier = user?.role_data?.tier_id;
@@ -87,7 +91,11 @@ export default function BookingsScreen() {
   const fetchBookings = async () => {
     try {
       setLoading(true);
-      const list = await bookingService.list();
+      const [list, fetchedModels, fetchedMakes] = await Promise.all([
+        bookingService.list(),
+        vehicleService.getVehicleModels().catch(() => []),
+        vehicleService.getMakes().catch(() => []),
+      ]);
       // Sort bookings: pending/confirmed/in_progress first, then by date descending
       const sorted = [...list].sort((a, b) => {
         const dateA = new Date(a.scheduled_at).getTime();
@@ -95,6 +103,8 @@ export default function BookingsScreen() {
         return dateB - dateA;
       });
       setBookings(sorted);
+      setModels(fetchedModels);
+      setMakes(fetchedMakes);
     } catch (err: any) {
       console.error('Fetch bookings error:', err);
     } finally {
@@ -154,6 +164,53 @@ export default function BookingsScreen() {
     return [...combos, ...singles].join(', ');
   };
 
+  const getVehicleDisplayName = (vehicle: any) => {
+    if (!vehicle) return 'Xe của tôi';
+    
+    // Look up model
+    const modelId = typeof vehicle.model_id === 'object' ? vehicle.model_id?._id : vehicle.model_id;
+    const modelObj = models.find(m => m._id === modelId) || (typeof vehicle.model_id === 'object' ? vehicle.model_id : null);
+    const modelName = modelObj?.model_name || '';
+
+    // Look up make
+    const makeId = modelObj ? (typeof modelObj.make_id === 'object' ? modelObj.make_id?._id : modelObj.make_id) : '';
+    const makeObj = makes.find(m => m._id === makeId) || (modelObj && typeof modelObj.make_id === 'object' ? modelObj.make_id : null);
+    const makeName = makeObj?.make_name || '';
+
+    const specName = vehicle.vehicle_model || '';
+
+    const nameParts = [];
+    if (makeName) nameParts.push(makeName);
+    if (modelName) nameParts.push(modelName);
+    if (specName) nameParts.push(specName);
+
+    return nameParts.length > 0 ? nameParts.join(' ') : 'Xe của tôi';
+  };
+
+  const getBookingServicesList = (services: Booking['services']) => {
+    if (!services || !Array.isArray(services)) return [];
+    const list: { name: string; isCombo: boolean }[] = [];
+    
+    services.forEach((s: any) => {
+      const pkg = s.service_package_id || s.service_package;
+      const svc = s.service_id || s.service;
+      
+      if (pkg && typeof pkg === 'object') {
+        const pName = (pkg as any).package_name || (pkg as any).service_name || (pkg as any).name;
+        if (pName && !list.some(item => item.name === pName && item.isCombo)) {
+          list.push({ name: pName, isCombo: true });
+        }
+      } else if (svc && typeof svc === 'object') {
+        const sName = (svc as any).service_name || (svc as any).name;
+        if (sName) {
+          list.push({ name: sName, isCombo: false });
+        }
+      }
+    });
+    
+    return list;
+  };
+
   const renderBookingItem = ({ item }: { item: Booking }) => {
     const basePrice = item.services.reduce((sum, s) => sum + s.price_snapshot, 0);
     
@@ -167,76 +224,170 @@ export default function BookingsScreen() {
     const finalPrice = item.discount_amount !== undefined 
       ? (item.final_price ?? basePrice)
       : Math.max(0, basePrice - Math.round(basePrice * (bookingTierDiscountPercentage / 100)));
+    
     const scheduledDate = new Date(item.scheduled_at);
-    const dateFormatted = scheduledDate.toLocaleDateString('vi-VN');
+    // Date parts for high-tech calendar ticket
+    const dayVal = String(scheduledDate.getDate()).padStart(2, '0');
+    const monthVal = `T${scheduledDate.getMonth() + 1}`;
     const timeFormatted = scheduledDate.toLocaleTimeString('vi-VN', {
       hour: '2-digit',
       minute: '2-digit',
     });
 
     const canCancel = item.booking_status === 'pending' || item.booking_status === 'confirmed';
+    const statusStyles = getStatusStyles(item.booking_status);
+    const bookingServices = getBookingServicesList(item.services);
+    
+    // Resolve populated vehicle_id or vehicle fallback
+    const bookingVehicle = item.vehicle_id || item.vehicle;
+    const bookingBranch = item.branch_id || item.branch;
+    const vehicleName = getVehicleDisplayName(bookingVehicle);
 
     return (
       <View style={styles.bookingCard}>
         <View style={styles.bookingHeader}>
-          <View style={styles.bookingDateTime}>
-            <MaterialCommunityIcons name="calendar" size={22} color="#06B6D4" />
-            <View>
-              <Text style={styles.date}>{dateFormatted}</Text>
-              <Text style={styles.time}>{timeFormatted}</Text>
+          {/* Calendar Block */}
+          <View style={styles.calendarBlock}>
+            <View style={styles.calendarLeft}>
+              <Text style={styles.calendarDay}>{dayVal}</Text>
+              <Text style={styles.calendarMonth}>{monthVal}</Text>
+            </View>
+            <View style={styles.calendarRight}>
+              <Text style={styles.calendarTime}>{timeFormatted}</Text>
+              <Text style={styles.calendarYear}>{scheduledDate.getFullYear()}</Text>
             </View>
           </View>
+
+          {/* Glowing Status Badge */}
           <View
             style={[
               styles.statusBadge,
-              { backgroundColor: getStatusColor(item.booking_status) },
+              { 
+                backgroundColor: statusStyles.bg, 
+                borderColor: statusStyles.border,
+                borderWidth: 1 
+              },
             ]}>
-            <Text style={styles.statusText}>{getStatusLabel(item.booking_status)}</Text>
+            <Text style={[styles.statusDot, { color: statusStyles.text }]}>●</Text>
+            <Text style={[styles.statusText, { color: statusStyles.text }]}>
+              {getStatusLabel(item.booking_status)}
+            </Text>
           </View>
+        </View>
+
+        {/* High-tech divider with side indents */}
+        <View style={styles.cardDividerContainer}>
+          <View style={styles.dividerDot} />
+          <View style={styles.cardDividerLine} />
+          <View style={styles.dividerDot} />
         </View>
 
         <View style={styles.bookingDetails}>
-          {item.branch?.branch_address && (
+          {/* Branch Section */}
+          {bookingBranch?.branch_address && (
             <View style={styles.detailItem}>
-              <MaterialCommunityIcons name="map-marker" size={18} color="#64748B" />
-              <Text style={styles.detailText} numberOfLines={1}>
-                Cơ sở: {item.branch.branch_address.street}, {item.branch.branch_address.district}
-              </Text>
+              <View style={styles.detailIconWrapper}>
+                <MaterialCommunityIcons name="map-marker-radius-outline" size={16} color="#06B6D4" />
+              </View>
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Cơ sở rửa xe</Text>
+                <Text style={styles.detailText} numberOfLines={1}>
+                  {bookingBranch.branch_address.street}, {bookingBranch.branch_address.district}
+                </Text>
+              </View>
             </View>
           )}
+
+          {/* Vehicle Section with Plate Badge */}
           <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="car" size={18} color="#64748B" />
-            <Text style={styles.detailText}>
-              {item.vehicle?.license_plate} — {item.vehicle?.vehicle_model || 'Xe của tôi'}
-            </Text>
+            <View style={styles.detailIconWrapper}>
+              <MaterialCommunityIcons name="car-outline" size={16} color="#8B5CF6" />
+            </View>
+            <View style={styles.detailContent}>
+              <Text style={styles.detailLabel}>Phương tiện</Text>
+              <View style={styles.vehicleRow}>
+                {bookingVehicle?.license_plate && (
+                  <View style={styles.plateContainer}>
+                    <View style={styles.plateInnerBorder}>
+                      <View style={styles.plateRegistrationDot} />
+                      <Text style={styles.plateText}>{bookingVehicle.license_plate.toUpperCase()}</Text>
+                    </View>
+                  </View>
+                )}
+                <Text style={styles.vehicleModelText} numberOfLines={1}>
+                  {vehicleName}
+                </Text>
+              </View>
+            </View>
           </View>
-          <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="spray-bottle" size={18} color="#64748B" />
-            <Text style={styles.detailText} numberOfLines={2}>
-              {renderServiceNames(item.services)}
-            </Text>
-          </View>
+
+          {/* Services Section with Tags */}
+          {bookingServices.length > 0 && (
+            <View style={styles.detailItem}>
+              <View style={styles.detailIconWrapper}>
+                <MaterialCommunityIcons name="clipboard-text-outline" size={16} color="#10B981" />
+              </View>
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Gói dịch vụ & Dịch vụ lẻ</Text>
+                <View style={styles.servicesWrap}>
+                  {bookingServices.map((svc, i) => (
+                    <View 
+                      key={i} 
+                      style={[
+                        styles.serviceChip, 
+                        svc.isCombo ? styles.comboServiceChip : styles.singleServiceChip
+                      ]}
+                    >
+                      <MaterialCommunityIcons 
+                        name={svc.isCombo ? "star-face" : "check-circle-outline"} 
+                        size={12} 
+                        color={svc.isCombo ? "#0891B2" : "#64748B"} 
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text 
+                        style={[
+                          styles.serviceChipText,
+                          svc.isCombo ? styles.comboServiceChipText : styles.singleServiceChipText
+                        ]}
+                      >
+                        {svc.isCombo ? `Combo: ${svc.name}` : svc.name}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </View>
+          )}
         </View>
 
+        {/* Footer */}
         <View style={styles.bookingFooter}>
-          {finalPrice < basePrice ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={[styles.price, { textDecorationLine: 'line-through', fontSize: 13, color: '#94A3B8' }]}>
-                {basePrice.toLocaleString('vi-VN')} ₫
-              </Text>
-              <Text style={styles.price}>
-                {finalPrice.toLocaleString('vi-VN')} ₫
-              </Text>
-            </View>
-          ) : (
-            <Text style={styles.price}>{finalPrice.toLocaleString('vi-VN')} ₫</Text>
-          )}
+          <View style={styles.priceContainer}>
+            <Text style={styles.priceMetaLabel}>Tổng thanh toán</Text>
+            {finalPrice < basePrice ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.price, { textDecorationLine: 'line-through', fontSize: 13, color: '#94A3B8' }]}>
+                  {basePrice.toLocaleString('vi-VN')} đ
+                </Text>
+                <Text style={styles.price}>
+                  {finalPrice.toLocaleString('vi-VN')} đ
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.price}>{finalPrice.toLocaleString('vi-VN')} đ</Text>
+            )}
+          </View>
+          
           <View style={styles.actions}>
             {canCancel && (
               <Pressable
-                style={[styles.actionBtn, styles.cancelBtn]}
+                style={({ pressed }) => [
+                  styles.actionBtn, 
+                  styles.cancelBtn,
+                  pressed && { opacity: 0.7 }
+                ]}
                 onPress={() => handleCancelBooking(item._id)}>
-                <MaterialCommunityIcons name="delete" size={18} color="#EF4444" />
+                <MaterialCommunityIcons name="calendar-remove-outline" size={16} color="#EF4444" />
                 <Text style={styles.cancelBtnText}>Hủy lịch</Text>
               </Pressable>
             )}
@@ -248,32 +399,44 @@ export default function BookingsScreen() {
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Đặt lịch rửa xe</Text>
+        <View>
+          <Text style={styles.headerTitle}>Lịch Rửa Xe</Text>
+          <Text style={styles.headerSub}>Theo dõi và đặt lịch hẹn tự động</Text>
+        </View>
         {user?.role === 'customer' && (
           <Pressable
-            style={styles.bookButton}
+            style={({ pressed }) => [styles.bookButton, pressed && { opacity: 0.85 }]}
             onPress={() => setShowModal(true)}>
-            <MaterialCommunityIcons name="plus" size={24} color="#FFFFFF" />
+            <MaterialCommunityIcons name="calendar-plus" size={20} color="#FFFFFF" />
+            <Text style={styles.bookButtonText}>Đặt lịch</Text>
           </Pressable>
         )}
       </View>
 
       {loading && bookings.length === 0 ? (
         <View style={styles.loadingState}>
-          <ActivityIndicator size="large" color="#06B6D4" />
+          <View style={styles.pulseContainer}>
+            <ActivityIndicator size="large" color="#06B6D4" />
+          </View>
           <Text style={styles.loadingText}>Đang tải lịch đặt...</Text>
         </View>
       ) : bookings.length === 0 ? (
         <View style={styles.emptyState}>
-          <MaterialCommunityIcons name="calendar-blank" size={64} color="#D1D5DB" />
-          <Text style={styles.emptyText}>Chưa có lịch đặt</Text>
-          <Text style={styles.emptySubtext}>Đặt lịch rửa xe ngay hôm nay</Text>
+          <View style={styles.emptyIconBox}>
+            <MaterialCommunityIcons name="calendar-blank-outline" size={44} color="#06B6D4" />
+          </View>
+          <Text style={styles.emptyText}>Gara chưa hẹn lịch</Text>
+          <Text style={styles.emptySubtext}>Hiện chưa có dịch vụ nào được lên lịch hẹn rửa xe trong tương lai.</Text>
           {user?.role === 'customer' && (
             <Pressable
-              style={styles.emptyButton}
+              style={({ pressed }) => [styles.emptyButton, pressed && { opacity: 0.85 }]}
               onPress={() => setShowModal(true)}>
-              <Text style={styles.emptyButtonText}>Đặt lịch ngay</Text>
+              <MaterialCommunityIcons name="plus" size={16} color="#FFFFFF" />
+              <Text style={styles.emptyButtonText}>Đặt lịch rửa xe</Text>
             </Pressable>
           )}
         </View>
@@ -285,6 +448,7 @@ export default function BookingsScreen() {
           contentContainerStyle={styles.listContent}
           refreshing={loading}
           onRefresh={fetchBookings}
+          showsVerticalScrollIndicator={false}
         />
       )}
 
@@ -1356,38 +1520,64 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
-    marginTop: 50,
+    backgroundColor: '#F8FAFC',
   },
 
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    paddingTop: Platform.OS === 'ios' ? 60 : 20,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#F1F5F9',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 10,
+    elevation: 2,
   },
 
-  title: {
-    fontSize: 18,
+  headerTitle: {
+    fontSize: 22,
     fontWeight: '800',
     color: '#0F172A',
+    letterSpacing: -0.6,
+  },
+
+  headerSub: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+    marginTop: 2,
   },
 
   bookButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#06B6D4',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#06B6D4',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    shadowColor: '#06B6D4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+
+  bookButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 
   listContent: {
-    padding: 12,
+    padding: 16,
+    paddingBottom: 32,
   },
 
   loadingState: {
@@ -1396,77 +1586,289 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  pulseContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(6,182,212,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+
   loadingText: {
-    marginTop: 10,
     fontSize: 14,
     color: '#64748B',
+    fontWeight: '600',
   },
 
   bookingCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 12,
+    borderColor: '#E2E8F0',
+    marginBottom: 14,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.04,
+    shadowRadius: 16,
+    elevation: 3,
   },
 
   bookingHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'center',
   },
 
-  bookingDateTime: {
+  // Calendar block ticket style
+  calendarBlock: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
   },
 
-  date: {
-    fontSize: 14,
-    fontWeight: '700',
+  calendarLeft: {
+    backgroundColor: '#06B6D4',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 42,
+  },
+
+  calendarDay: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+
+  calendarMonth: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#ECFEFF',
+    textTransform: 'uppercase',
+    marginTop: -2,
+  },
+
+  calendarRight: {
+    paddingHorizontal: 10,
+    justifyContent: 'center',
+  },
+
+  calendarTime: {
+    fontSize: 13,
+    fontWeight: '800',
     color: '#0F172A',
   },
 
-  time: {
-    fontSize: 12,
+  calendarYear: {
+    fontSize: 9,
+    fontWeight: '600',
     color: '#64748B',
-    marginTop: 2,
+    marginTop: 1,
   },
 
   statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+
+  statusDot: {
+    fontSize: 8,
+    marginRight: 4,
   },
 
   statusText: {
     fontSize: 11,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+
+  // High tech divider line
+  cardDividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginVertical: 12,
+  },
+
+  dividerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#E2E8F0',
+  },
+
+  cardDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginHorizontal: 4,
   },
 
   bookingDetails: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 8,
+    backgroundColor: '#FAFAFA',
+    borderRadius: 12,
     padding: 12,
-    marginBottom: 12,
-    gap: 8,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    gap: 12,
   },
 
   detailItem: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+
+  detailIconWrapper: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+
+  detailContent: {
+    flex: 1,
+    gap: 2,
+  },
+
+  detailLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   detailText: {
     fontSize: 13,
     color: '#0F172A',
-    fontWeight: '500',
+    fontWeight: '700',
+  },
+
+  // Vehicle info inline
+  vehicleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+
+  vehicleModelText: {
+    fontSize: 13,
+    color: '#0F172A',
+    fontWeight: '700',
     flex: 1,
+  },
+
+  // Vietnamese License Plate Badge
+  plateContainer: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.2,
+    borderColor: '#1E293B',
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    minWidth: 78,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  plateInnerBorder: {
+    borderWidth: 0.4,
+    borderColor: '#94A3B8',
+    borderRadius: 3,
+    paddingHorizontal: 3,
+    paddingVertical: 0.5,
+    width: '100%',
+    alignItems: 'center',
+    position: 'relative',
+  },
+
+  plateRegistrationDot: {
+    position: 'absolute',
+    top: -2,
+    width: 2.4,
+    height: 2.4,
+    borderRadius: 1.2,
+    backgroundColor: '#3B82F6',
+  },
+
+  plateText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#1E293B',
+    letterSpacing: 0.4,
+    fontFamily: Platform.select({ ios: 'Courier', android: 'monospace' }),
+  },
+
+  // Service Tags
+  servicesWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+  },
+
+  serviceChip: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    maxWidth: '100%',
+  },
+
+  serviceChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#334155',
+  },
+
+  comboServiceChip: {
+    backgroundColor: '#ECFEFF',
+    borderColor: '#CFFAFE',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+
+  comboServiceChipText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0891B2',
+  },
+
+  singleServiceChip: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+
+  singleServiceChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
   },
 
   bookingFooter: {
@@ -1475,9 +1877,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  priceContainer: {
+    gap: 2,
+  },
+
+  priceMetaLabel: {
+    fontSize: 9,
+    color: '#94A3B8',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+
   price: {
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#06B6D4',
   },
 
@@ -1489,22 +1902,21 @@ const styles = StyleSheet.create({
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#F3F4F6',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
   },
 
   cancelBtn: {
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FEE2E2',
+    backgroundColor: 'rgba(239,68,68,0.04)',
+    borderColor: 'rgba(239,68,68,0.12)',
   },
 
   cancelBtnText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#EF4444',
   },
 
@@ -1512,8 +1924,18 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
     paddingVertical: 60,
+  },
+
+  emptyIconBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: 'rgba(6,182,212,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
 
   emptyText: {
