@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import CreateChecklistModal from '../../components/CreateChecklistModal';
 import ViewChecklistModal from '../../components/ViewChecklistModal';
+import PaymentModal from '../../components/PaymentModal';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -93,6 +94,7 @@ export default function StaffBookingsScreen() {
   const [checklist, setChecklist] = useState<any | null>(null);
   const [loadingChecklist, setLoadingChecklist] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [paymentModal, setPaymentModal] = useState<{ isOpen: boolean, booking: Booking | null }>({ isOpen: false, booking: null });
 
   const fetchBookings = async () => {
     try {
@@ -178,7 +180,6 @@ export default function StaffBookingsScreen() {
               else if (action === 'checkin') await bookingService.checkin(bookingId);
               else if (action === 'start') await bookingService.start(bookingId);
               else if (action === 'washed') await bookingService.washed(bookingId);
-              else if (action === 'complete') await bookingService.complete(bookingId);
 
               Alert.alert('Thành công', 'Cập nhật trạng thái thành công');
               setSelectedBooking(null);
@@ -305,9 +306,9 @@ export default function StaffBookingsScreen() {
         return (
           <Pressable
             style={[styles.actionBtn, { backgroundColor: GREEN }]}
-            onPress={() => handleUpdateStatus(item._id, 'complete')}>
+            onPress={() => setPaymentModal({ isOpen: true, booking: item })}>
             <MaterialCommunityIcons name="cash-register" size={16} color="#FFFFFF" />
-            <Text style={styles.actionBtnText}>Hoàn thành</Text>
+            <Text style={styles.actionBtnText}>Thanh toán</Text>
           </Pressable>
         );
       }
@@ -732,49 +733,68 @@ export default function StaffBookingsScreen() {
                       <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>Tổng phí dịch vụ:</Text>
                         <Text style={styles.infoVal}>
-                          {(selectedBooking.base_price ?? 0).toLocaleString('vi-VN')} đ
+                          {(selectedBooking.base_price ?? selectedBooking.final_price ?? 0).toLocaleString('vi-VN')} đ
                         </Text>
                       </View>
 
                       {/* Tier membership discount */}
-                      {selectedBooking.customer_id?.tier_id?.discount_percentage ? (
-                        <View style={styles.infoRow}>
-                          <Text style={styles.infoLabel}>
-                            Hạng {selectedBooking.customer_id.tier_id.tier_name || 'thành viên'}:
-                          </Text>
-                          <Text style={[styles.infoVal, { color: GREEN }]}>
-                            -{selectedBooking.customer_id.tier_id.discount_percentage}%
-                          </Text>
-                        </View>
-                      ) : null}
+                      {(() => {
+                        const cust = (selectedBooking as any).customer_id || (selectedBooking as any).customer;
+                        if (cust?.tier_id?.discount_percentage) {
+                          const base = selectedBooking.base_price ?? selectedBooking.final_price ?? 0;
+                          const tierDiscAmount = Math.round(base * (cust.tier_id.discount_percentage / 100));
+                          return (
+                            <View style={styles.infoRow}>
+                              <Text style={styles.infoLabel}>
+                                Hạng {cust.tier_id.tier_name || 'thành viên'}:
+                              </Text>
+                              <Text style={[styles.infoVal, { color: GREEN }]}>
+                                -{tierDiscAmount.toLocaleString('vi-VN')} đ ({cust.tier_id.discount_percentage}%)
+                              </Text>
+                            </View>
+                          );
+                        }
+                        return null;
+                      })()}
 
                       {/* Other discounts */}
-                      {selectedBooking.discount_amount ? (
-                        <View style={styles.infoRow}>
-                          <Text style={styles.infoLabel}>Khuyến mãi khác:</Text>
-                          <Text style={[styles.infoVal, { color: GREEN }]}>
-                            -{selectedBooking.discount_amount.toLocaleString('vi-VN')} đ
-                          </Text>
-                        </View>
-                      ) : null}
+                      {(() => {
+                        const base = selectedBooking.base_price ?? selectedBooking.final_price ?? 0;
+                        const cust = (selectedBooking as any).customer_id || (selectedBooking as any).customer;
+                        const tierDiscPct = cust?.tier_id?.discount_percentage || 0;
+                        const tierDiscAmount = Math.round(base * (tierDiscPct / 100));
+                        // Since backend discount_amount includes tier discount, we subtract it to get pure promotion discount
+                        const purePromotionDiscount = Math.max(0, (selectedBooking.discount_amount || 0) - tierDiscAmount);
+                        
+                        if (purePromotionDiscount > 0) {
+                          return (
+                            <View style={styles.infoRow}>
+                              <Text style={styles.infoLabel}>Khuyến mãi khác:</Text>
+                              <Text style={[styles.infoVal, { color: GREEN }]}>
+                                -{purePromotionDiscount.toLocaleString('vi-VN')} đ
+                              </Text>
+                            </View>
+                          );
+                        }
+                        return null;
+                      })()}
 
                       <View style={styles.divider} />
 
                       {/* Final Price */}
                       <View style={[styles.infoRow, { marginTop: 4 }]}>
-                        <Text style={[styles.infoLabel, { fontWeight: '700', color: DARK }]}>Tổng thanh toán:</Text>
+                        <Text style={[styles.infoLabel, { fontWeight: '700', color: DARK }]}>Tổng thanh toán (Dự kiến):</Text>
                         <Text style={[styles.infoVal, { fontWeight: '800', color: ROSE, fontSize: 16 }]}>
                           {(() => {
-                            const base = selectedBooking.base_price ?? 0;
-                            const discPct = selectedBooking.customer_id?.tier_id?.discount_percentage || 0;
-                            const otherDisc = selectedBooking.discount_amount || 0;
-
-                            // If final_price is set, use it, else calculate it
-                            if (selectedBooking.final_price !== undefined) {
-                              return selectedBooking.final_price.toLocaleString('vi-VN');
-                            }
-
-                            const finalPrice = Math.max(0, base - Math.round(base * (discPct / 100)) - otherDisc);
+                            const base = selectedBooking.base_price ?? selectedBooking.final_price ?? 0;
+                            const cust = (selectedBooking as any).customer_id || (selectedBooking as any).customer;
+                            const discPct = cust?.tier_id?.discount_percentage || 0;
+                            const tierDiscAmount = Math.round(base * (discPct / 100));
+                            
+                            // total discount is either the invoice's discount_amount or just the tier discount if no invoice yet
+                            const totalDiscount = selectedBooking.discount_amount || tierDiscAmount;
+                            
+                            const finalPrice = Math.max(0, base - totalDiscount);
                             return finalPrice.toLocaleString('vi-VN');
                           })()} đ
                         </Text>
@@ -810,7 +830,7 @@ export default function StaffBookingsScreen() {
                         </Pressable>
                       )}
                       {(selectedBooking.booking_status as string) === 'washed' && (
-                        <Pressable style={[styles.modalActionBtn, { backgroundColor: GREEN }]} onPress={() => handleUpdateStatus(selectedBooking._id, 'complete')}>
+                        <Pressable style={[styles.modalActionBtn, { backgroundColor: GREEN }]} onPress={() => { setSelectedBooking(null); setPaymentModal({ isOpen: true, booking: selectedBooking }); }}>
                           <Text style={styles.modalActionBtnText}>Hoàn thành & Thu tiền</Text>
                         </Pressable>
                       )}
@@ -848,6 +868,17 @@ export default function StaffBookingsScreen() {
           }}
         />
       )}
+
+      {/* Payment Modal for Staff */}
+      <PaymentModal
+        isOpen={paymentModal.isOpen}
+        onClose={() => setPaymentModal({ isOpen: false, booking: null })}
+        booking={paymentModal.booking}
+        onSuccess={() => {
+          setPaymentModal({ isOpen: false, booking: null });
+          fetchBookings();
+        }}
+      />
     </View>
   );
 }

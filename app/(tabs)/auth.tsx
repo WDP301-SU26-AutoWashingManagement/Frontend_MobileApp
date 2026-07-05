@@ -401,26 +401,7 @@ export default function TabTwoScreen() {
 
           {/* Form Card */}
           <View style={styles.formCard}>
-            {/* Segmented Control */}
-            <View style={styles.segmentedControl}>
-              <Pressable
-                onPress={() => switchMode('login')}
-                style={[styles.segmentButton, isLogin && styles.segmentButtonActive]}>
-                <Text style={[styles.segmentText, isLogin && styles.segmentTextActive]}>
-                  Đăng nhập
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => switchMode('register')}
-                style={[styles.segmentButton, !isLogin && styles.segmentButtonActive]}>
-                <Text style={[styles.segmentText, !isLogin && styles.segmentTextActive]}>
-                  Đăng ký
-                </Text>
-              </Pressable>
-            </View>
-
             {/* Login Form */}
-            {isLogin ? (
               <View style={styles.formBlock}>
                 <View style={styles.fieldGroup}>
                   <Text style={styles.label}>Email</Text>
@@ -505,104 +486,6 @@ export default function TabTwoScreen() {
                   </Text>
                 ) : null}
               </View>
-            ) : (
-              <View style={styles.formBlock}>
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Họ và tên</Text>
-                  <TextInput
-                    value={registerForm.name}
-                    onChangeText={(name) => setRegisterForm((prev) => ({ ...prev, name }))}
-                    placeholder="Nguyễn Văn A"
-                    placeholderTextColor="#9CA3AF"
-                    autoCapitalize="words"
-                    editable={!loading}
-                    style={styles.input}
-                  />
-                  <Text style={styles.helperText}>Tối thiểu 3 ký tự</Text>
-                </View>
-
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Email</Text>
-                  <TextInput
-                    value={registerForm.email}
-                    onChangeText={(email) => setRegisterForm((prev) => ({ ...prev, email }))}
-                    placeholder="ban@email.com"
-                    placeholderTextColor="#9CA3AF"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoComplete="email"
-                    editable={!loading}
-                    style={styles.input}
-                  />
-                </View>
-
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Mật khẩu</Text>
-                  <TextInput
-                    value={registerForm.password}
-                    onChangeText={(password) =>
-                      setRegisterForm((prev) => ({ ...prev, password }))
-                    }
-                    placeholder="••••••••"
-                    placeholderTextColor="#9CA3AF"
-                    secureTextEntry
-                    autoComplete="new-password"
-                    editable={!loading}
-                    style={styles.input}
-                  />
-                  <Text style={styles.helperText}>Tối thiểu 6 ký tự</Text>
-                </View>
-
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Nhập lại mật khẩu</Text>
-                  <View
-                    style={[
-                      styles.input,
-                      registerForm.confirmPassword.length > 0 &&
-                        (passwordsMatch
-                          ? { borderColor: '#06B6D4' }
-                          : { borderColor: '#EF4444' }),
-                    ]}>
-                    <TextInput
-                      value={registerForm.confirmPassword}
-                      onChangeText={(confirmPassword) =>
-                        setRegisterForm((prev) => ({ ...prev, confirmPassword }))
-                      }
-                      placeholder="••••••••"
-                      placeholderTextColor="#9CA3AF"
-                      secureTextEntry
-                      autoComplete="new-password"
-                      editable={!loading}
-                      style={styles.inputText}
-                    />
-                    {passwordsMatch ? (
-                      <MaterialCommunityIcons
-                        name="check-circle"
-                        size={18}
-                        color="#06B6D4"
-                        style={styles.inputIcon}
-                      />
-                    ) : null}
-                  </View>
-                  {registerForm.confirmPassword.length > 0 && !passwordsMatch && (
-                    <Text style={styles.errorText}>Không khớp</Text>
-                  )}
-                </View>
-
-                <Pressable
-                  onPress={handleRegisterSubmit}
-                  disabled={loading}
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    pressed && !loading && styles.primaryButtonPressed,
-                    loading && styles.primaryButtonDisabled,
-                  ]}>
-                  <Text style={styles.primaryButtonText}>
-                    {loading ? 'Đang xử lý...' : 'Đăng ký'}
-                  </Text>
-                </Pressable>
-              </View>
-            )}
           </View>
 
           <Modal visible={forgotVisible} transparent animationType="fade" onRequestClose={closeForgotPassword}>
