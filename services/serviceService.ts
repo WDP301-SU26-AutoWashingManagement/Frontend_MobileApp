@@ -9,6 +9,7 @@ export interface Service {
   service_name: string;
   service_price: number;
   service_description?: string;
+  service_group_id?: any;
   is_active?: boolean;
 }
 
@@ -28,6 +29,7 @@ class ServiceService {
         service_name: String(data.service_name ?? ''),
         service_price: Number(data.service_price ?? 0),
         service_description: data.description || data.service_description,
+        service_group_id: data.service_group_id,
         is_active: data.is_active !== false,
       }));
     } catch (error) {

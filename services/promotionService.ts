@@ -12,6 +12,7 @@ export interface Promotion {
   min_order_amount?: number;
   discount_type: 'fixed' | 'percentage';
   discount_value: number;
+  max_discount_amount?: number;
   bonus_reward_point?: number;
   start_at?: string;
   end_at?: string;
@@ -51,6 +52,7 @@ class PromotionService {
         min_order_amount: Number(data.min_order_amount || 0),
         discount_type: data.discount_percentage ? 'percentage' : 'fixed',
         discount_value: Number(data.discount_percentage || data.discount_amount || 0),
+        max_discount_amount: data.discount_percentage ? Number(data.discount_amount || 0) : undefined,
         bonus_reward_point: data.bonus_reward_point != null ? Number(data.bonus_reward_point) : undefined,
         start_at: data.start_date || data.start_at,
         end_at: data.end_date || data.end_at,
@@ -86,6 +88,7 @@ class PromotionService {
         min_order_amount: Number(data.min_order_amount || 0),
         discount_type: data.discount_percentage ? 'percentage' : 'fixed',
         discount_value: Number(data.discount_percentage || data.discount_amount || 0),
+        max_discount_amount: data.discount_percentage ? Number(data.discount_amount || 0) : undefined,
         bonus_reward_point: data.bonus_reward_point != null ? Number(data.bonus_reward_point) : undefined,
         start_at: data.start_date || data.start_at,
         end_at: data.end_date || data.end_at,

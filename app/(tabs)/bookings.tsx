@@ -25,6 +25,7 @@ import promotionService, { Promotion } from '../../services/promotionService';
 import vehicleService, { Vehicle } from '../../services/vehicleService';
 import branchService, { Branch } from '../../services/branchService';
 import servicePackageService from '../../services/servicePackageService';
+import PaymentModal from '../../components/PaymentModal';
 
 const { width } = Dimensions.get('window');
 
@@ -117,6 +118,8 @@ export default function BookingsScreen() {
       fetchBookings();
     }, [])
   );
+
+  const [paymentModal, setPaymentModal] = useState<{ isOpen: boolean, booking: Booking | null }>({ isOpen: false, booking: null });
 
   const handleCancelBooking = (bookingId: string) => {
     Alert.alert(
@@ -386,9 +389,22 @@ export default function BookingsScreen() {
                   styles.cancelBtn,
                   pressed && { opacity: 0.7 }
                 ]}
-                onPress={() => handleCancelBooking(item._id)}>
+                onPress={() => handleCancelBooking(item._id || item.id!)}>
                 <MaterialCommunityIcons name="calendar-remove-outline" size={16} color="#EF4444" />
                 <Text style={styles.cancelBtnText}>Hủy lịch</Text>
+              </Pressable>
+            )}
+            
+            {item.booking_status === 'washed' && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.actionBtn, 
+                  styles.payBtn,
+                  pressed && { opacity: 0.7 }
+                ]}
+                onPress={() => setPaymentModal({ isOpen: true, booking: item })}>
+                <MaterialCommunityIcons name="credit-card-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.payBtnText}>Thanh toán ngay</Text>
               </Pressable>
             )}
           </View>
@@ -460,6 +476,16 @@ export default function BookingsScreen() {
           fetchBookings();
         }}
         router={router}
+      />
+
+      <PaymentModal
+        isOpen={paymentModal.isOpen}
+        onClose={() => setPaymentModal({ isOpen: false, booking: null })}
+        booking={paymentModal.booking}
+        onSuccess={() => {
+          setPaymentModal({ isOpen: false, booking: null });
+          fetchBookings();
+        }}
       />
     </View>
   );
@@ -1900,11 +1926,13 @@ const styles = StyleSheet.create({
   },
 
   actionBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
   },
@@ -1918,6 +1946,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#EF4444',
+  },
+
+  payBtn: {
+    backgroundColor: '#06B6D4',
+    borderColor: '#06B6D4',
+  },
+
+  payBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 
   emptyState: {
