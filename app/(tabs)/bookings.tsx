@@ -224,9 +224,16 @@ export default function BookingsScreen() {
       ? (itemTier.discount_percentage || 0)
       : tierDiscountPercentage;
 
-    const finalPrice = item.discount_amount !== undefined 
-      ? (item.final_price ?? basePrice)
-      : Math.max(0, basePrice - Math.round(basePrice * (bookingTierDiscountPercentage / 100)));
+    let totalDiscount = 0;
+    if (item.applied_tier_discount !== undefined || item.applied_promotion_discount !== undefined) {
+      totalDiscount = (item.applied_tier_discount || 0) + (item.applied_promotion_discount || 0);
+    } else if (item.discount_amount !== undefined) {
+      totalDiscount = item.discount_amount;
+    } else {
+      totalDiscount = Math.round(basePrice * (bookingTierDiscountPercentage / 100));
+    }
+
+    const finalPrice = Math.max(0, basePrice - totalDiscount);
     
     const scheduledDate = new Date(item.scheduled_at);
     // Date parts for high-tech calendar ticket

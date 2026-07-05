@@ -13,7 +13,7 @@ export interface Booking {
   id?: string;
   customer_id?: any;
   appointment_code: string;
-  booking_status: 'pending' | 'confirmed' | 'checked_in' | 'in_progress' | 'completed' | 'cancelled';
+  booking_status: 'pending' | 'confirmed' | 'checked_in' | 'in_progress' | 'washed' | 'completed' | 'cancelled';
   booking_source: 'app' | 'web' | 'walk_in';
   scheduled_at: string;
   checkedin_at?: string | null;
@@ -91,6 +91,8 @@ export interface Booking {
   base_price?: number;
   final_price?: number;
   discount_amount?: number;
+  applied_tier_discount?: number;
+  applied_promotion_discount?: number;
 }
 
 export interface CreateBookingPayload {
