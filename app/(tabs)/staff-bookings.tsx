@@ -740,13 +740,24 @@ export default function StaffBookingsScreen() {
                       {/* Tier membership discount */}
                       {(() => {
                         const cust = (selectedBooking as any).customer_id || (selectedBooking as any).customer;
-                        if (cust?.tier_id?.discount_percentage) {
+                        if (selectedBooking.applied_tier_discount !== undefined) {
+                            if (selectedBooking.applied_tier_discount > 0) {
+                              return (
+                                <View style={styles.infoRow}>
+                                  <Text style={styles.infoLabel}>Giảm giá hạng thành viên:</Text>
+                                  <Text style={[styles.infoVal, { color: GREEN }]}>
+                                    -{selectedBooking.applied_tier_discount.toLocaleString('vi-VN')} đ
+                                  </Text>
+                                </View>
+                              );
+                            }
+                        } else if (cust?.tier_id?.discount_percentage) {
                           const base = selectedBooking.base_price ?? selectedBooking.final_price ?? 0;
                           const tierDiscAmount = Math.round(base * (cust.tier_id.discount_percentage / 100));
                           return (
                             <View style={styles.infoRow}>
                               <Text style={styles.infoLabel}>
-                                Hạng {cust.tier_id.tier_name || 'thành viên'}:
+                                Giảm giá hạng thành viên:
                               </Text>
                               <Text style={[styles.infoVal, { color: GREEN }]}>
                                 -{tierDiscAmount.toLocaleString('vi-VN')} đ ({cust.tier_id.discount_percentage}%)
@@ -759,12 +770,16 @@ export default function StaffBookingsScreen() {
 
                       {/* Other discounts */}
                       {(() => {
-                        const base = selectedBooking.base_price ?? selectedBooking.final_price ?? 0;
-                        const cust = (selectedBooking as any).customer_id || (selectedBooking as any).customer;
-                        const tierDiscPct = cust?.tier_id?.discount_percentage || 0;
-                        const tierDiscAmount = Math.round(base * (tierDiscPct / 100));
-                        // Since backend discount_amount includes tier discount, we subtract it to get pure promotion discount
-                        const purePromotionDiscount = Math.max(0, (selectedBooking.discount_amount || 0) - tierDiscAmount);
+                        let purePromotionDiscount = 0;
+                        if (selectedBooking.applied_promotion_discount !== undefined) {
+                            purePromotionDiscount = selectedBooking.applied_promotion_discount;
+                        } else {
+                            const base = selectedBooking.base_price ?? selectedBooking.final_price ?? 0;
+                            const cust = (selectedBooking as any).customer_id || (selectedBooking as any).customer;
+                            const tierDiscPct = cust?.tier_id?.discount_percentage || 0;
+                            const tierDiscAmount = Math.round(base * (tierDiscPct / 100));
+                            purePromotionDiscount = Math.max(0, (selectedBooking.discount_amount || 0) - tierDiscAmount);
+                        }
                         
                         if (purePromotionDiscount > 0) {
                           return (
@@ -787,12 +802,17 @@ export default function StaffBookingsScreen() {
                         <Text style={[styles.infoVal, { fontWeight: '800', color: ROSE, fontSize: 16 }]}>
                           {(() => {
                             const base = selectedBooking.base_price ?? selectedBooking.final_price ?? 0;
-                            const cust = (selectedBooking as any).customer_id || (selectedBooking as any).customer;
-                            const discPct = cust?.tier_id?.discount_percentage || 0;
-                            const tierDiscAmount = Math.round(base * (discPct / 100));
                             
-                            // total discount is either the invoice's discount_amount or just the tier discount if no invoice yet
-                            const totalDiscount = selectedBooking.discount_amount || tierDiscAmount;
+                            let totalDiscount = 0;
+                            if (selectedBooking.applied_tier_discount !== undefined || selectedBooking.applied_promotion_discount !== undefined) {
+                              totalDiscount = (selectedBooking.applied_tier_discount || 0) + (selectedBooking.applied_promotion_discount || 0);
+                            } else if (selectedBooking.discount_amount !== undefined) {
+                              totalDiscount = selectedBooking.discount_amount;
+                            } else {
+                              const cust = (selectedBooking as any).customer_id || (selectedBooking as any).customer;
+                              const discPct = cust?.tier_id?.discount_percentage || 0;
+                              totalDiscount = Math.round(base * (discPct / 100));
+                            }
                             
                             const finalPrice = Math.max(0, base - totalDiscount);
                             return finalPrice.toLocaleString('vi-VN');
