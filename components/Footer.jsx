@@ -1,30 +1,30 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 const VIDEO_URI =
   'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260302_085844_21a8f4b3-dea5-4ede-be16-d53f6973bb14.mp4';
 
 const LINKS = [
   {
-    title: 'Sản phẩm',
-    items: ['Tính năng', 'Hạng thành viên', 'Cách hoạt động'],
+    title: 'Khám phá',
+    items: ['Trang chủ', 'Tính năng', 'Hạng thành viên', 'Cách hoạt động'],
   },
   {
-    title: 'Công ty',
-    items: ['Về chúng tôi', 'Blog', 'Liên hệ'],
+    title: 'Ứng dụng',
+    items: ['Đặt lịch rửa xe', 'Quản lý phương tiện', 'Lịch sử đặt lịch'],
   },
   {
-    title: 'Pháp lý',
-    items: ['Điều khoản', 'Bảo mật', 'Cookie'],
+    title: 'Hỗ trợ & Liên hệ',
+    items: ['Chi nhánh hệ thống', 'Hotline: 0933 003'],
   },
 ];
 
 const SOCIALS = [
   { icon: 'facebook', label: 'Facebook' },
   { icon: 'instagram', label: 'Instagram' },
-  { icon: 'twitter', label: 'Twitter' },
+  { icon: 'tiktok', label: 'TikTok' },
 ];
 
 export default function Footer() {
@@ -40,23 +40,6 @@ export default function Footer() {
       <View style={styles.overlay} />
 
       <View style={styles.content}>
-        <View style={styles.newsletterCard}>
-          <Text style={styles.newsTitle}>Nhận cập nhật mới</Text>
-          <Text style={styles.newsSub}>Đừng bỏ lỡ khuyến mãi độc quyền và tin tức từ AutoWash</Text>
-          <View style={styles.newsForm}>
-            <TextInput
-              style={styles.input}
-              placeholder="Email của bạn"
-              placeholderTextColor="#6B7280"
-              keyboardType="email-address"
-            />
-            <Pressable style={styles.button}>
-              <Text style={styles.buttonText}>Đăng ký</Text>
-              <MaterialCommunityIcons name="arrow-right" size={18} color="#fff" />
-            </Pressable>
-          </View>
-        </View>
-
         <View style={styles.grid}>
           <View style={styles.brandCol}>
             <View style={styles.brandRow}>
@@ -70,7 +53,7 @@ export default function Footer() {
               </Text>
             </View>
             <Text style={styles.brandDesc}>
-              Hệ thống rửa xe thông minh với chương trình loyalty tích hợp.
+              Hệ thống rửa xe tự động thông minh hàng đầu. Đặt lịch nhanh chóng, tích điểm thành viên và chăm sóc phương tiện chuẩn 5 sao.
             </Text>
             <View style={styles.socialRow}>
               {SOCIALS.map((item) => (
@@ -92,6 +75,18 @@ export default function Footer() {
             </View>
           ))}
         </View>
+
+        <View style={styles.divider} />
+
+        <View style={styles.bottomBar}>
+          <Text style={styles.copyright}>
+            © {new Date().getFullYear()} AutoWash. Tất cả các quyền được bảo lưu.
+          </Text>
+          <View style={styles.legalLinks}>
+            <Text style={styles.legalLink}>Điều khoản sử dụng</Text>
+            <Text style={styles.legalLink}>Chính sách bảo mật</Text>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -101,7 +96,7 @@ const styles = StyleSheet.create({
   footer: {
     position: 'relative',
     marginTop: 20,
-    minHeight: 580,
+    minHeight: 340,
     overflow: 'hidden',
     backgroundColor: '#04080D',
   },
@@ -116,56 +111,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 24,
     paddingBottom: 26,
-  },
-  newsletterCard: {
-    backgroundColor: 'rgba(255,255,255,0.11)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    borderRadius: 22,
-    padding: 16,
-    marginBottom: 26,
-  },
-  newsTitle: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '800',
-    marginBottom: 6,
-  },
-  newsSub: {
-    color: 'rgba(240,247,250,0.86)',
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  newsForm: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 0,
-  },
-  input: {
-    flex: 1,
-    height: 44,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 10,
-    borderBottomLeftRadius: 10,
-    paddingHorizontal: 12,
-    color: '#0F172A',
-    fontSize: 14,
-  },
-  button: {
-    height: 44,
-    paddingHorizontal: 14,
-    backgroundColor: '#0EA5B7',
-    borderTopRightRadius: 10,
-    borderBottomRightRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
   },
   grid: {
     flexDirection: 'row',
@@ -233,5 +178,29 @@ const styles = StyleSheet.create({
     color: 'rgba(236,244,247,0.84)',
     fontSize: 13,
     marginBottom: 8,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginTop: 24,
+    marginBottom: 16,
+  },
+  bottomBar: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 8,
+  },
+  copyright: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  legalLinks: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  legalLink: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 11,
   },
 });

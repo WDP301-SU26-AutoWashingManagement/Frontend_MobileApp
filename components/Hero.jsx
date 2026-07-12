@@ -1,21 +1,59 @@
+import { useEffect, useState } from 'react';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { StyleSheet, Text, View } from 'react-native';
-
-const STATS = [
-  { value: '+65k', label: 'khách hàng đang sử dụng' },
-  { value: '+1.5B', label: 'lít nước được tiết kiệm' },
-  { value: '+300k', label: 'lượt đặt lịch' },
-];
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import branchService from '../services/branchService';
 
 const VIDEO_URI = 'https://cdn.pixabay.com/video/2023/10/12/184734-873923034_large.mp4';
 
+const formatNumber = (num) => {
+  if (!num) return '0';
+  if (num >= 1e9) {
+    return (num / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+  }
+  if (num >= 1e6) {
+    return (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  }
+  if (num >= 1e3) {
+    return (num / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
+  }
+  return num.toString();
+};
+
 export default function Hero() {
+  const { width: screenWidth } = useWindowDimensions();
+  const isSmall = screenWidth < 375;
+
+  const wordFontSize = isSmall ? 38 : 50;
+  const wordLineHeight = isSmall ? 44 : 58;
+  const statValSize = isSmall ? 26 : 34;
+  const statLabelSize = isSmall ? 10 : 11;
+  const descFontSize = isSmall ? 12 : 13;
+
+  const topWordTopRight = isSmall ? 110 : 140;
+  const descTop = isSmall ? 190 : 250;
+  const bottomWordLeft = isSmall ? 280 : 330;
+
+  const [stats, setStats] = useState({ customers: 0, bookings: 0, branches: 0 });
   const player = useVideoPlayer(VIDEO_URI, (p) => {
     p.loop = true;
     p.muted = true;
     p.play();
   });
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const data = await branchService.getPublicStats();
+        if (data) {
+          setStats(data);
+        }
+      } catch (error) {
+        console.error('Lỗi khi tải thống kê trong Mobile Hero:', error);
+      }
+    }
+    fetchStats();
+  }, []);
 
   return (
     <View style={styles.hero}>
@@ -42,32 +80,32 @@ export default function Hero() {
         </View>
 
         <View style={styles.stage}>
-          <Text style={[styles.heroWord, styles.wordTopLeft]}>RỬA XE</Text>
-          <Text style={[styles.heroWord, styles.wordTopRight]}>TÍCH ĐIỂM</Text>
-          <Text style={[styles.heroWord, styles.wordBottomLeft]}>NHẬN ƯU ĐÃI</Text>
+          <Text style={[styles.heroWord, styles.wordTopLeft, { fontSize: wordFontSize, lineHeight: wordLineHeight }]}>RỬA XE</Text>
+          <Text style={[styles.heroWord, styles.wordTopRight, { fontSize: wordFontSize, lineHeight: wordLineHeight, top: topWordTopRight }]}>TÍCH ĐIỂM</Text>
+          <Text style={[styles.heroWord, styles.wordBottomLeft, { fontSize: wordFontSize, lineHeight: wordLineHeight, top: bottomWordLeft }]}>NHẬN ƯU ĐÃI</Text>
 
-          <View style={styles.descriptionWrap}>
-            <Text style={styles.description}>
+          <View style={[styles.descriptionWrap, { top: descTop }]}>
+            <Text style={[styles.description, { fontSize: descFontSize }]}>
               Đặt lịch, theo dõi điểm thưởng và nhận ưu đãi độc quyền theo hạng thành viên trong một ứng dụng duy nhất.
             </Text>
           </View>
 
           <View style={[styles.statCorner, styles.statTopRight]}>
             <View style={styles.statLine} />
-            <Text style={styles.statValue}>+65k</Text>
-            <Text style={styles.statLabel}>khách hàng đang sử dụng</Text>
+            <Text style={[styles.statValue, { fontSize: statValSize, lineHeight: statValSize + 2 }]}>+{formatNumber(stats.customers)}</Text>
+            <Text style={[styles.statLabel, { fontSize: statLabelSize }]}>khách hàng đang sử dụng</Text>
           </View>
 
           <View style={[styles.statCorner, styles.statBottomLeft]}>
             <View style={styles.statLine} />
-            <Text style={styles.statValue}>+1.5b</Text>
-            <Text style={styles.statLabel}>lít nước được tiết kiệm</Text>
+            <Text style={[styles.statValue, { fontSize: statValSize, lineHeight: statValSize + 2 }]}>+{formatNumber(stats.branches)}</Text>
+            <Text style={[styles.statLabel, { textAlign: 'left', fontSize: statLabelSize }]}>chi nhánh đang hoạt động</Text>
           </View>
 
           <View style={[styles.statCorner, styles.statBottomRight]}>
             <View style={styles.statLine} />
-            <Text style={styles.statValue}>+300k</Text>
-            <Text style={styles.statLabel}>lượt đặt lịch</Text>
+            <Text style={[styles.statValue, { fontSize: statValSize, lineHeight: statValSize + 2 }]}>+{formatNumber(stats.bookings)}</Text>
+            <Text style={[styles.statLabel, { fontSize: statLabelSize }]}>lượt đặt lịch thành công</Text>
           </View>
         </View>
       </View>
