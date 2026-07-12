@@ -42,6 +42,21 @@ class BranchService {
       throw error;
     }
   }
+
+  async getPublicStats(): Promise<{ customers: number; bookings: number; branches: number }> {
+    try {
+      const response = await axios.get<{ success: boolean; data: { customers: number; bookings: number; branches: number } }>(
+        `${API_BASE_URL}/branches/public-stats`,
+        {
+          timeout: API_CONFIG.API_TIMEOUT,
+        }
+      );
+      return response.data.data;
+    } catch (error) {
+      console.error('Error fetching branch public stats in Mobile:', error);
+      throw error;
+    }
+  }
 }
 
 export default new BranchService();
