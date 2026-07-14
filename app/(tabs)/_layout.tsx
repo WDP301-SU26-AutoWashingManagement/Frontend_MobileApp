@@ -80,6 +80,16 @@ export default function TabLayout() {
         }}
       />
 
+      {/* Transactions - Visible only when authenticated and is staff */}
+      <Tabs.Screen
+        name="transactions"
+        options={{
+          title: 'Giao dịch',
+          href: (!isAuthenticated || user?.role !== 'staff') ? null : undefined,
+          tabBarIcon: ({ color }) => <MaterialCommunityIcons size={24} name="receipt" color={color} />,
+        }}
+      />
+
       {/* Profile - Visible only when authenticated */}
       <Tabs.Screen
         name="profile"

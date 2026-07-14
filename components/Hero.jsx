@@ -75,7 +75,7 @@ export default function Hero() {
             contentFit="contain"
           />
           <Text style={styles.brandText}>
-            Auto<Text style={styles.brandAccent}>Wash</Text>
+            Hybrid<Text style={styles.brandAccent}>Wash</Text>
           </Text>
         </View>
 

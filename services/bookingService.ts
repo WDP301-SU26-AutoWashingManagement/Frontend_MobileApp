@@ -223,6 +223,18 @@ class BookingService {
     }
   }
 
+  async getById(bookingId: string): Promise<any> {
+    try {
+      const response = await this.axiosInstance.get<{ success: boolean; data: any }>(
+        `/bookings/${bookingId}`
+      );
+      return response.data.data;
+    } catch (error) {
+      console.error('Error fetching booking details in Mobile:', error);
+      throw error;
+    }
+  }
+
   async create(payload: CreateBookingPayload): Promise<Booking> {
     try {
       const response = await this.axiosInstance.post<{ success: boolean; data: Booking }>(
@@ -409,6 +421,19 @@ class BookingService {
       return response.data;
     } catch (error) {
       console.error('Error creating checklist in Mobile:', error);
+      throw error;
+    }
+  }
+
+  async getPaidBookings(startDate?: string, endDate?: string): Promise<any[]> {
+    try {
+      const response = await this.axiosInstance.post<{ success: boolean; data: any[] }>(
+        '/admin/paid-bookings',
+        { startDate, endDate }
+      );
+      return response.data.data;
+    } catch (error) {
+      console.error('Error fetching paid bookings in Mobile:', error);
       throw error;
     }
   }

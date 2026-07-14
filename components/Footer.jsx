@@ -49,7 +49,7 @@ export default function Footer() {
                 contentFit="cover"
               />
               <Text style={styles.brandText}>
-                Auto<Text style={styles.brandAccent}>Wash</Text>
+                Hybrid<Text style={styles.brandAccent}>Wash</Text>
               </Text>
             </View>
             <Text style={styles.brandDesc}>
@@ -80,7 +80,7 @@ export default function Footer() {
 
         <View style={styles.bottomBar}>
           <Text style={styles.copyright}>
-            © {new Date().getFullYear()} AutoWash. Tất cả các quyền được bảo lưu.
+            © {new Date().getFullYear()} HybridWash. Tất cả các quyền được bảo lưu.
           </Text>
           <View style={styles.legalLinks}>
             <Text style={styles.legalLink}>Điều khoản sử dụng</Text>

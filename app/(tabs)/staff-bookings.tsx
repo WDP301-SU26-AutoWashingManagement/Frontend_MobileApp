@@ -13,6 +13,8 @@ import {
   StatusBar,
   ScrollView,
   Linking,
+  TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import CreateChecklistModal from '../../components/CreateChecklistModal';
 import ViewChecklistModal from '../../components/ViewChecklistModal';
@@ -22,6 +24,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../hooks/useAuthService';
 import bookingService, { Booking } from '../../services/bookingService';
+
+const ImagePicker: any = require('expo-image-picker');
 
 const { width } = Dimensions.get('window');
 
@@ -95,6 +99,17 @@ export default function StaffBookingsScreen() {
   const [loadingChecklist, setLoadingChecklist] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [paymentModal, setPaymentModal] = useState<{ isOpen: boolean, booking: Booking | null }>({ isOpen: false, booking: null });
+  const [missingChecklistIds, setMissingChecklistIds] = useState<Set<string>>(new Set());
+  const [loadingChecklists, setLoadingChecklists] = useState<Set<string>>(new Set());
+  const [checkinMethodBooking, setCheckinMethodBooking] = useState<Booking | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [checkinFailureModal, setCheckinFailureModal] = useState<{
+    visible: boolean;
+    message: string;
+    detectedPlate: string;
+    booking: Booking;
+  } | null>(null);
+  const [failureManualPlate, setFailureManualPlate] = useState('');
 
   const fetchBookings = async () => {
     try {
@@ -107,6 +122,40 @@ export default function StaffBookingsScreen() {
         return dateB - dateA;
       });
       setBookings(sorted);
+
+      // Check checklist status for 'confirmed' bookings
+      const confirmed = sorted.filter((b) => b.booking_status === 'confirmed');
+      if (confirmed.length > 0) {
+        const confirmedIds = confirmed.map((b) => b._id);
+        setLoadingChecklists(new Set(confirmedIds));
+
+        const results = await Promise.all(
+          confirmed.map(async (b) => {
+            const id = b._id;
+            try {
+              const data = await bookingService.getChecklist(id);
+              return { id, hasChecklist: !!data };
+            } catch (err) {
+              return { id, hasChecklist: false };
+            }
+          })
+        );
+
+        setMissingChecklistIds((prev) => {
+          const newSet = new Set(prev);
+          results.forEach((r) => {
+            if (!r.hasChecklist) newSet.add(r.id);
+            else newSet.delete(r.id);
+          });
+          return newSet;
+        });
+
+        setLoadingChecklists((prev) => {
+          const newSet = new Set(prev);
+          results.forEach((r) => newSet.delete(r.id));
+          return newSet;
+        });
+      }
     } catch (err: any) {
       console.error('Fetch bookings error:', err);
       Alert.alert('Lỗi', 'Không thể tải danh sách lịch hẹn');
@@ -157,10 +206,30 @@ export default function StaffBookingsScreen() {
   };
 
   const handleUpdateStatus = async (bookingId: string, action: 'confirm' | 'checkin' | 'start' | 'washed' | 'complete') => {
+    if (action === 'checkin' && missingChecklistIds.has(bookingId)) {
+      const matchingBooking = bookings.find(b => b._id === bookingId);
+      Alert.alert(
+        'Chưa tạo biên bản',
+        'Vui lòng tạo biên bản kiểm tra xe trước khi check-in.',
+        [
+          { text: 'Quay lại', style: 'cancel' },
+          {
+            text: 'Tạo Biên bản',
+            onPress: () => {
+              if (matchingBooking) {
+                setCreateChecklistBooking(matchingBooking);
+              }
+            }
+          }
+        ]
+      );
+      return;
+    }
+
     let actionText = '';
     switch (action) {
       case 'confirm': actionText = 'xác nhận lịch hẹn'; break;
-      case 'checkin': actionText = 'nhận xe khách'; break;
+      case 'checkin': actionText = 'check-in nhận xe khách'; break;
       case 'start': actionText = 'bắt đầu rửa xe'; break;
       case 'washed': actionText = 'báo rửa xong'; break;
       case 'complete': actionText = 'hoàn thành đơn hàng'; break;
@@ -193,6 +262,133 @@ export default function StaffBookingsScreen() {
         },
       ]
     );
+  };
+
+  const handleScanLicensePlate = async (booking: Booking, source: 'camera' | 'library') => {
+    try {
+      let result;
+      if (source === 'camera') {
+        const cameraPerm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!cameraPerm.granted) {
+          Alert.alert('Quyền truy cập', 'Vui lòng cấp quyền sử dụng camera để quét biển số.');
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          allowsEditing: false,
+          quality: 0.8,
+        });
+      } else {
+        const libraryPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!libraryPerm.granted) {
+          Alert.alert('Quyền truy cập', 'Vui lòng cho phép truy cập ảnh để chọn ảnh biển số.');
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          allowsEditing: false,
+          quality: 0.8,
+        });
+      }
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const imageUri = result.assets[0].uri;
+      if (!imageUri) return;
+
+      setIsScanning(true);
+
+      const uriParts = imageUri.split('.');
+      const fileExt = uriParts[uriParts.length - 1] || 'jpg';
+      const mimeType = fileExt === 'jpg' || fileExt === 'jpeg' ? 'image/jpeg' : `image/${fileExt}`;
+      const fileName = `checkin_camera.${fileExt}`;
+
+      const response = await bookingService.checkinWithCamera(imageUri, mimeType, fileName);
+
+      if (response.success) {
+        // Double check if the checked-in booking is the one we wanted, or another one
+        const scannedId = response.appointment_id || '';
+        const selectedId = booking._id;
+        
+        if (scannedId === selectedId) {
+          Alert.alert(
+            'Check-in Thành Công!',
+            `Đã check-in thành công đơn hàng #${selectedId.slice(-6).toUpperCase()} qua camera AI.`
+          );
+        } else {
+          Alert.alert(
+            'Check-in Thành Công!',
+            `${response.message}\nBiển số: ${response.license_plate?.toUpperCase()}\nMã đơn: #${scannedId.slice(-6).toUpperCase()}`
+          );
+        }
+        setCheckinMethodBooking(null);
+        fetchBookings();
+      } else {
+        setCheckinFailureModal({
+          visible: true,
+          message: response.message || 'Không tìm thấy lịch hẹn trùng khớp cho biển số này.',
+          detectedPlate: response.license_plate || '',
+          booking: booking,
+        });
+      }
+    } catch (err: any) {
+      console.error('Scan error:', err);
+      const responseData = err.response?.data;
+      const licensePlate = responseData?.license_plate || responseData?.data?.license_plate || '';
+      const message = responseData?.message || err.message || 'Lỗi kết nối máy chủ AI hoặc hệ thống.';
+
+      setCheckinFailureModal({
+        visible: true,
+        message: message,
+        detectedPlate: licensePlate || '',
+        booking: booking,
+      });
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const triggerScanOptions = (booking: Booking) => {
+    Alert.alert(
+      'Chọn nguồn ảnh',
+      'Chọn phương thức để quét biển số xe',
+      [
+        { text: 'Chụp ảnh camera', onPress: () => handleScanLicensePlate(booking, 'camera') },
+        { text: 'Chọn từ thư viện ảnh', onPress: () => handleScanLicensePlate(booking, 'library') },
+        { text: 'Hủy', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleFailureManualCheckin = async () => {
+    if (!checkinFailureModal) return;
+    const { booking } = checkinFailureModal;
+    const typedPlate = failureManualPlate.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const bookingPlate = (booking.vehicle_id?.license_plate || booking.vehicle?.license_plate || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    if (!typedPlate) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập biển số xe.');
+      return;
+    }
+
+    if (typedPlate !== bookingPlate) {
+      Alert.alert('Không khớp', 'Biển số xe nhập vào không khớp với lịch hẹn này.');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      await bookingService.checkin(booking._id);
+      Alert.alert('Thành công', 'Check-in thành công');
+      setCheckinFailureModal(null);
+      setCheckinMethodBooking(null);
+      setFailureManualPlate('');
+      fetchBookings();
+    } catch (err: any) {
+      Alert.alert('Lỗi', err.message || 'Check-in thất bại');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   // Filter bookings based on active tab
@@ -276,12 +472,30 @@ export default function StaffBookingsScreen() {
           </Pressable>
         );
       } else if (status === 'confirmed') {
+        if (loadingChecklists.has(item._id)) {
+          return (
+            <View style={[styles.actionBtn, { backgroundColor: '#94A3B8' }]}>
+              <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 4 }} />
+              <Text style={styles.actionBtnText}>Đang tải...</Text>
+            </View>
+          );
+        }
+        if (missingChecklistIds.has(item._id)) {
+          return (
+            <Pressable
+              style={[styles.actionBtn, { backgroundColor: ROSE }]}
+              onPress={() => setCreateChecklistBooking(item)}>
+              <MaterialCommunityIcons name="file-document-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.actionBtnText}>Tạo Biên bản</Text>
+            </Pressable>
+          );
+        }
         return (
           <Pressable
-            style={[styles.actionBtn, { backgroundColor: PURPLE }]}
-            onPress={() => handleUpdateStatus(item._id, 'checkin')}>
-            <MaterialCommunityIcons name="car-key" size={16} color="#FFFFFF" />
-            <Text style={styles.actionBtnText}>Nhận xe</Text>
+            style={[styles.actionBtn, { backgroundColor: CYAN }]}
+            onPress={() => setCheckinMethodBooking(item)}>
+            <MaterialCommunityIcons name="qrcode-scan" size={16} color="#FFFFFF" />
+            <Text style={styles.actionBtnText}>Check-in</Text>
           </Pressable>
         );
       } else if (status === 'checked_in') {
@@ -741,16 +955,16 @@ export default function StaffBookingsScreen() {
                       {(() => {
                         const cust = (selectedBooking as any).customer_id || (selectedBooking as any).customer;
                         if (selectedBooking.applied_tier_discount !== undefined) {
-                            if (selectedBooking.applied_tier_discount > 0) {
-                              return (
-                                <View style={styles.infoRow}>
-                                  <Text style={styles.infoLabel}>Giảm giá hạng thành viên:</Text>
-                                  <Text style={[styles.infoVal, { color: GREEN }]}>
-                                    -{selectedBooking.applied_tier_discount.toLocaleString('vi-VN')} đ
-                                  </Text>
-                                </View>
-                              );
-                            }
+                          if (selectedBooking.applied_tier_discount > 0) {
+                            return (
+                              <View style={styles.infoRow}>
+                                <Text style={styles.infoLabel}>Giảm giá hạng thành viên:</Text>
+                                <Text style={[styles.infoVal, { color: GREEN }]}>
+                                  -{selectedBooking.applied_tier_discount.toLocaleString('vi-VN')} đ
+                                </Text>
+                              </View>
+                            );
+                          }
                         } else if (cust?.tier_id?.discount_percentage) {
                           const base = selectedBooking.base_price ?? selectedBooking.final_price ?? 0;
                           const tierDiscAmount = Math.round(base * (cust.tier_id.discount_percentage / 100));
@@ -772,15 +986,15 @@ export default function StaffBookingsScreen() {
                       {(() => {
                         let purePromotionDiscount = 0;
                         if (selectedBooking.applied_promotion_discount !== undefined) {
-                            purePromotionDiscount = selectedBooking.applied_promotion_discount;
+                          purePromotionDiscount = selectedBooking.applied_promotion_discount;
                         } else {
-                            const base = selectedBooking.base_price ?? selectedBooking.final_price ?? 0;
-                            const cust = (selectedBooking as any).customer_id || (selectedBooking as any).customer;
-                            const tierDiscPct = cust?.tier_id?.discount_percentage || 0;
-                            const tierDiscAmount = Math.round(base * (tierDiscPct / 100));
-                            purePromotionDiscount = Math.max(0, (selectedBooking.discount_amount || 0) - tierDiscAmount);
+                          const base = selectedBooking.base_price ?? selectedBooking.final_price ?? 0;
+                          const cust = (selectedBooking as any).customer_id || (selectedBooking as any).customer;
+                          const tierDiscPct = cust?.tier_id?.discount_percentage || 0;
+                          const tierDiscAmount = Math.round(base * (tierDiscPct / 100));
+                          purePromotionDiscount = Math.max(0, (selectedBooking.discount_amount || 0) - tierDiscAmount);
                         }
-                        
+
                         if (purePromotionDiscount > 0) {
                           return (
                             <View style={styles.infoRow}>
@@ -802,7 +1016,7 @@ export default function StaffBookingsScreen() {
                         <Text style={[styles.infoVal, { fontWeight: '800', color: ROSE, fontSize: 16 }]}>
                           {(() => {
                             const base = selectedBooking.base_price ?? selectedBooking.final_price ?? 0;
-                            
+
                             let totalDiscount = 0;
                             if (selectedBooking.applied_tier_discount !== undefined || selectedBooking.applied_promotion_discount !== undefined) {
                               totalDiscount = (selectedBooking.applied_tier_discount || 0) + (selectedBooking.applied_promotion_discount || 0);
@@ -813,7 +1027,7 @@ export default function StaffBookingsScreen() {
                               const discPct = cust?.tier_id?.discount_percentage || 0;
                               totalDiscount = Math.round(base * (discPct / 100));
                             }
-                            
+
                             const finalPrice = Math.max(0, base - totalDiscount);
                             return finalPrice.toLocaleString('vi-VN');
                           })()} đ
@@ -835,9 +1049,21 @@ export default function StaffBookingsScreen() {
                         </Pressable>
                       )}
                       {selectedBooking.booking_status === 'confirmed' && (
-                        <Pressable style={[styles.modalActionBtn, { backgroundColor: PURPLE }]} onPress={() => handleUpdateStatus(selectedBooking._id, 'checkin')}>
-                          <Text style={styles.modalActionBtnText}>Nhận xe (Check-in)</Text>
-                        </Pressable>
+                        missingChecklistIds.has(selectedBooking._id) ? (
+                          <Pressable
+                            style={[styles.modalActionBtn, { backgroundColor: ROSE }]}
+                            onPress={() => {
+                              setCreateChecklistBooking(selectedBooking);
+                              setSelectedBooking(null);
+                            }}
+                          >
+                            <Text style={styles.modalActionBtnText}>Tạo Biên bản</Text>
+                          </Pressable>
+                        ) : (
+                          <Pressable style={[styles.modalActionBtn, { backgroundColor: CYAN }]} onPress={() => { setSelectedBooking(null); setCheckinMethodBooking(selectedBooking); }}>
+                            <Text style={styles.modalActionBtnText}>Check-in</Text>
+                          </Pressable>
+                        )
                       )}
                       {selectedBooking.booking_status === 'checked_in' && (
                         <Pressable style={[styles.modalActionBtn, { backgroundColor: CYAN }]} onPress={() => handleUpdateStatus(selectedBooking._id, 'start')}>
@@ -899,6 +1125,118 @@ export default function StaffBookingsScreen() {
           fetchBookings();
         }}
       />
+
+      {/* CHỌN PHƯƠNG THỨC CHECK-IN MODAL */}
+      {checkinMethodBooking && (
+        <Modal
+          visible={!!checkinMethodBooking}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCheckinMethodBooking(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <Pressable style={styles.modalBackdrop} onPress={() => setCheckinMethodBooking(null)} />
+            <View style={styles.checkinMethodModalContent}>
+              <Text style={styles.checkinMethodTitle}>Phương thức Check-in</Text>
+              <Text style={styles.checkinMethodDesc}>
+                Đơn <Text style={{ fontWeight: '700' }}>#{(checkinMethodBooking._id).slice(-6).toUpperCase()}</Text> đã có biên bản kiểm tra. Vui lòng chọn cách check-in:
+              </Text>
+              <View style={{ gap: 12 }}>
+                {isScanning ? (
+                  <View style={[styles.checkinMethodBtn, { backgroundColor: CYAN }]}>
+                    <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 8 }} />
+                    <Text style={[styles.checkinMethodBtnText, { color: '#FFFFFF' }]}>Đang quét...</Text>
+                  </View>
+                ) : (
+                  <Pressable
+                    style={[styles.checkinMethodBtn, { backgroundColor: CYAN }]}
+                    onPress={() => {
+                      setCheckinMethodBooking(null);
+                      triggerScanOptions(checkinMethodBooking);
+                    }}
+                  >
+                    <MaterialCommunityIcons name="camera" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                    <Text style={[styles.checkinMethodBtnText, { color: '#FFFFFF' }]}>Quét bằng Camera AI</Text>
+                  </Pressable>
+                )}
+
+                <Pressable
+                  style={[styles.checkinMethodBtn, { backgroundColor: '#F1F5F9' }]}
+                  onPress={() => {
+                    const booking = checkinMethodBooking;
+                    setCheckinMethodBooking(null);
+                    handleUpdateStatus(booking._id, 'checkin');
+                  }}
+                >
+                  <MaterialCommunityIcons name="check-circle-outline" size={18} color={DARK} style={{ marginRight: 8 }} />
+                  <Text style={[styles.checkinMethodBtnText, { color: DARK }]}>Check-in thủ công</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.checkinMethodCancelBtn}
+                  onPress={() => setCheckinMethodBooking(null)}
+                >
+                  <Text style={styles.checkinMethodCancelText}>Hủy bỏ</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* CHECK-IN FAILURE MANUAL RETRY MODAL */}
+      {checkinFailureModal && (
+        <Modal
+          visible={checkinFailureModal.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCheckinFailureModal(null)}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+          >
+            <View style={styles.modalOverlay}>
+              <Pressable style={styles.modalBackdrop} onPress={() => setCheckinFailureModal(null)} />
+              <View style={styles.checkinFailureModalContent}>
+                <View style={styles.checkinFailureHeader}>
+                  <Ionicons name="close-circle" size={48} color={ROSE} style={{ marginBottom: 12 }} />
+                  <Text style={styles.checkinFailureTitle}>Thất bại</Text>
+                  <Text style={styles.checkinFailureDesc}>{checkinFailureModal.message}</Text>
+                </View>
+
+                <TextInput
+                  style={styles.checkinFailureInput}
+                  placeholder="NHẬP LẠI BIỂN SỐ BẰNG TAY"
+                  placeholderTextColor="#94A3B8"
+                  value={failureManualPlate}
+                  onChangeText={setFailureManualPlate}
+                  autoCapitalize="characters"
+                />
+
+                <View style={{ gap: 12, marginTop: 8 }}>
+                  <Pressable
+                    style={[styles.checkinFailureBtn, { backgroundColor: '#1E293B' }]}
+                    onPress={handleFailureManualCheckin}
+                  >
+                    <Text style={[styles.checkinFailureBtnText, { color: '#FFFFFF' }]}>Check-in</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.checkinFailureBtn, { backgroundColor: '#F1F5F9' }]}
+                    onPress={() => {
+                      setCheckinFailureModal(null);
+                      setFailureManualPlate('');
+                    }}
+                  >
+                    <Text style={[styles.checkinFailureBtnText, { color: DARK }]}>Đóng</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -1378,6 +1716,107 @@ const styles = StyleSheet.create({
   },
   dropdownItemTextActive: {
     color: CYAN,
+    fontWeight: '700',
+  },
+  checkinMethodModalContent: {
+    backgroundColor: SURFACE,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  checkinMethodTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: DARK,
+    marginBottom: 8,
+  },
+  checkinMethodDesc: {
+    fontSize: 14,
+    color: '#475569',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  checkinMethodBtn: {
+    width: '100%',
+    borderRadius: 12,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkinMethodBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  checkinMethodCancelBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    paddingVertical: 10,
+  },
+  checkinMethodCancelText: {
+    fontSize: 14,
+    color: GRAY,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  checkinFailureModalContent: {
+    backgroundColor: SURFACE,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  checkinFailureHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  checkinFailureTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: DARK,
+    marginBottom: 6,
+  },
+  checkinFailureDesc: {
+    fontSize: 14,
+    color: GRAY,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  checkinFailureInput: {
+    width: '100%',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 48,
+    fontSize: 14,
+    fontWeight: '700',
+    color: DARK,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  checkinFailureBtn: {
+    width: '100%',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkinFailureBtnText: {
+    fontSize: 14,
     fontWeight: '700',
   },
 });

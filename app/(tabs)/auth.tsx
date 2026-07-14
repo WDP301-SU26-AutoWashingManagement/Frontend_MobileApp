@@ -41,7 +41,7 @@ const AUTH_PROMO_COPY = {
   loginHighlight: 'độc quyền',
   loginDesc: 'Đăng nhập để nhận điểm thưởng và hạng thành viên VIP',
   registerTitle: 'Tham gia cộng đồng',
-  registerHighlight: 'AutoWash',
+  registerHighlight: 'HybridWash',
   registerDesc: 'Bắt đầu hành trình rửa xe thông minh của bạn hôm nay',
 };
 
@@ -369,7 +369,7 @@ export default function TabTwoScreen() {
               />
               <View>
                 <Text style={styles.brandTitle}>
-                  Auto<Text style={styles.brandAccent}>Wash</Text>
+                  Hybrid<Text style={styles.brandAccent}>Wash</Text>
                 </Text>
                 <Text style={styles.brandSubtitle}>Rửa xe thông minh</Text>
               </View>
@@ -713,7 +713,7 @@ export default function TabTwoScreen() {
               <View style={styles.benefitsIcon}>
                 <MaterialCommunityIcons name="check-all" size={18} color="#0EA5B7" />
               </View>
-              <Text style={styles.benefitsTitle}>Tại sao chọn AutoWash?</Text>
+              <Text style={styles.benefitsTitle}>Tại sao chọn HybridWash?</Text>
             </View>
 
             <View style={styles.benefitsList}>

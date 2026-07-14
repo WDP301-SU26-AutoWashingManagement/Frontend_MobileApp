@@ -1,17 +1,17 @@
 {
   "expo": {
-    "name": "AutoWash",
-    "slug": "AutoWash",
+    "name": "HybridWash",
+    "slug": "HybridWash",
     "owner": "thai5236",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "autowash",
+    "scheme": "hybridwash",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.autowash.mobile"
+      "bundleIdentifier": "com.hybridwash.mobile"
     },
     "android": {
       "adaptiveIcon": {
