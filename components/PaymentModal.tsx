@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, Modal, Pressable, StyleSheet, ActivityIndicator, Image, Alert } from 'react-native';
+import { View, Text, Modal, Pressable, StyleSheet, ActivityIndicator, Image, Alert, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { invoiceService } from '../services/invoiceService';
 import { Booking } from '../services/bookingService';
 import { useAuth } from '../hooks/useAuthService';
 import promotionService, { Promotion } from '../services/promotionService';
+import { parseVietQR } from '../utils/vietqr';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -25,6 +27,34 @@ export default function PaymentModal({ isOpen, onClose, booking, onSuccess }: Pa
   const [promotions, setPromotions] = useState<(Promotion & { calculatedDiscount: number })[]>([]);
   const [selectedPromotionId, setSelectedPromotionId] = useState<string | null>(null);
   const [loadingPromotions, setLoadingPromotions] = useState(false);
+  const [bankInfo, setBankInfo] = useState<{ accountName: string, accountNumber: string, bankName: string } | null>(null);
+
+  useEffect(() => {
+    if (paymentMode === 'qr' && invoice?.qr_code) {
+      const parsed = parseVietQR(invoice.qr_code);
+      if (parsed) {
+        fetch('https://api.vietqr.io/v2/banks')
+          .then(r => r.json())
+          .then(data => {
+            const bank = data.data?.find((b: any) => b.bin === parsed.bin);
+            setBankInfo({
+              accountName: parsed.accountName,
+              accountNumber: parsed.accountNumber,
+              bankName: bank ? bank.shortName : parsed.bin
+            });
+          })
+          .catch(() => {
+            setBankInfo({
+              accountName: parsed.accountName,
+              accountNumber: parsed.accountNumber,
+              bankName: parsed.bin
+            });
+          });
+      }
+    } else {
+      setBankInfo(null);
+    }
+  }, [paymentMode, invoice?.qr_code]);
 
   useEffect(() => {
     if (isOpen && booking && !invoice) {
@@ -350,22 +380,108 @@ export default function PaymentModal({ isOpen, onClose, booking, onSuccess }: Pa
                   </Pressable>
                 </View>
               ) : paymentMode === 'qr' && invoice && (
-                <View style={styles.qrContainer}>
-                  <Text style={styles.qrDesc}>Vui lòng quét mã QR bên dưới để chuyển khoản chính xác số tiền {(invoice.total || 0).toLocaleString('vi-VN')}đ.</Text>
-                  
-                  {invoice.qr_code && invoice.qr_code.startsWith('data:image') ? (
-                    <Image source={{ uri: invoice.qr_code }} style={styles.qrImage} />
-                  ) : invoice.qr_code ? (
-                     <Image source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(invoice.qr_code)}` }} style={styles.qrImage} />
-                  ) : (
-                    <ActivityIndicator size="large" color="#06B6D4" />
-                  )}
-                  
-                  <Text style={styles.qrNote}>Hệ thống sẽ tự động xác nhận sau khi nhận được tiền.</Text>
+                <View style={styles.qrContainerFull}>
+                  <View style={styles.qrInstructionHeader}>
+                     <MaterialCommunityIcons name="lightbulb-on-outline" size={20} color="#475569" style={{ marginRight: 8 }} />
+                     <Text style={styles.qrInstructionText}>
+                        Mở App Ngân hàng bất kỳ để <Text style={{ fontWeight: '700', color: '#0F172A' }}>quét mã VietQR</Text> hoặc <Text style={{ fontWeight: '700', color: '#0F172A' }}>chuyển khoản</Text> chính xác số tiền, nội dung bên dưới
+                     </Text>
+                  </View>
+                  <View style={styles.qrDetailsWrapper}>
+                     <View style={styles.qrLeftCol}>
+                        <View style={styles.qrLogoHeader}>
+                           <Text style={{ color: '#E11D48', fontWeight: '900', fontSize: 18 }}>Viet</Text>
+                           <Text style={{ color: '#1E40AF', fontWeight: '900', fontSize: 18 }}>QR</Text>
+                           <View style={{ backgroundColor: '#FBBF24', borderRadius: 4, paddingHorizontal: 4, marginLeft: 4 }}>
+                              <Text style={{ color: '#0F172A', fontWeight: '700', fontSize: 10 }}>PRO</Text>
+                           </View>
+                        </View>
+                        <View style={styles.qrImageBorder}>
+                           {invoice.qr_code && invoice.qr_code.startsWith('data:image') ? (
+                             <Image source={{ uri: invoice.qr_code }} style={styles.qrImage} />
+                           ) : invoice.qr_code ? (
+                              <Image source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(invoice.qr_code)}` }} style={styles.qrImage} />
+                           ) : (
+                             <View style={[styles.qrImage, { justifyContent: 'center', alignItems: 'center' }]}>
+                               <ActivityIndicator size="large" color="#06B6D4" />
+                             </View>
+                           )}
+                        </View>
+                        <View style={styles.qrBankLabel}>
+                           <Text style={{ color: '#1E40AF', fontStyle: 'italic', fontSize: 12, fontWeight: '600' }}>napas 247</Text>
+                           <View style={{ width: 1, height: 12, backgroundColor: '#CBD5E1', marginHorizontal: 8 }} />
+                           <Text style={{ color: '#2563EB', fontSize: 12, fontWeight: '600' }}>{bankInfo?.bankName || 'BANK'}</Text>
+                        </View>
+                     </View>
 
-                  <Pressable style={styles.btnOutline} onPress={handleCancelQR}>
-                    {loading ? <ActivityIndicator color="#EF4444" /> : <Text style={styles.btnOutlineText}>Huỷ mã QR này</Text>}
-                  </Pressable>
+                     <View style={styles.qrRightCol}>
+                        {bankInfo ? (
+                           <>
+                              <View style={styles.qrDetailRowTop}>
+                                 <View style={styles.qrBankAvatar}>
+                                    <Text style={styles.qrBankAvatarText}>{bankInfo.bankName.substring(0, 3)}</Text>
+                                 </View>
+                                 <View>
+                                    <Text style={styles.qrDetailLabel}>Ngân hàng</Text>
+                                    <Text style={styles.qrBankNameText}>{bankInfo.bankName}</Text>
+                                 </View>
+                              </View>
+
+                              <View style={styles.qrDetailRow}>
+                                 <Text style={styles.qrDetailLabel}>Chủ tài khoản:</Text>
+                                 <Text style={styles.qrDetailValUpper}>{bankInfo.accountName || 'KHUU TRONG QUAN'}</Text>
+                              </View>
+
+                              <View style={styles.qrDetailRow}>
+                                 <Text style={styles.qrDetailLabel}>Số tài khoản:</Text>
+                                 <View style={styles.qrValWithCopy}>
+                                    <Text style={styles.qrDetailVal}>{bankInfo.accountNumber}</Text>
+                                    <Pressable style={styles.qrCopyBtn} onPress={() => { Clipboard.setStringAsync(bankInfo.accountNumber); Alert.alert('Đã copy', 'Số tài khoản đã được copy') }}>
+                                       <Text style={styles.qrCopyBtnText}>Sao chép</Text>
+                                    </Pressable>
+                                 </View>
+                              </View>
+
+                              <View style={styles.qrDetailRow}>
+                                 <Text style={styles.qrDetailLabel}>Số tiền:</Text>
+                                 <View style={styles.qrValWithCopy}>
+                                    <Text style={styles.qrDetailVal}>{(invoice.total || 0).toLocaleString('vi-VN')} vnd</Text>
+                                    <Pressable style={styles.qrCopyBtn} onPress={() => { Clipboard.setStringAsync((invoice.total || 0).toString()); Alert.alert('Đã copy', 'Số tiền đã được copy') }}>
+                                       <Text style={styles.qrCopyBtnText}>Sao chép</Text>
+                                    </Pressable>
+                                 </View>
+                              </View>
+
+                              <View style={styles.qrDetailRow}>
+                                 <Text style={styles.qrDetailLabel}>Nội dung:</Text>
+                                 <View style={styles.qrValWithCopy}>
+                                    <Text style={styles.qrDetailVal}>{invoice.order_code}</Text>
+                                    <Pressable style={styles.qrCopyBtn} onPress={() => { Clipboard.setStringAsync(invoice.order_code?.toString() || ''); Alert.alert('Đã copy', 'Nội dung chuyển khoản đã được copy') }}>
+                                       <Text style={styles.qrCopyBtnText}>Sao chép</Text>
+                                    </Pressable>
+                                 </View>
+                              </View>
+                           </>
+                        ) : (
+                           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                              <ActivityIndicator size="small" color="#CBD5E1" />
+                              <Text style={{ color: '#64748B', fontSize: 12, marginTop: 8 }}>Đang giải mã thông tin...</Text>
+                           </View>
+                        )}
+                     </View>
+                  </View>
+
+                  <View style={styles.qrNoteBox}>
+                     <Text style={styles.qrNoteBoxText}>
+                        Lưu ý: Nhập chính xác số tiền <Text style={{ fontWeight: '700', color: '#0F172A' }}>{(invoice.total || 0).toLocaleString('vi-VN')}</Text>, nội dung <Text style={{ fontWeight: '700', color: '#0F172A' }}>{invoice.order_code}</Text> khi chuyển khoản
+                     </Text>
+                  </View>
+
+                  <View style={{ padding: 16 }}>
+                     <Pressable style={styles.btnOutline} onPress={handleCancelQR}>
+                       {loading ? <ActivityIndicator color="#EF4444" /> : <Text style={styles.btnOutlineText}>Huỷ mã QR này</Text>}
+                     </Pressable>
+                  </View>
                 </View>
               )}
             </View>
@@ -512,27 +628,143 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700'
   },
-  qrContainer: {
-    alignItems: 'center',
-    gap: 16
+  qrContainerFull: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    width: '100%',
   },
-  qrDesc: {
-    textAlign: 'center',
-    color: '#475569',
-    fontSize: 14,
-    fontWeight: '500',
-    paddingHorizontal: 10
+  qrInstructionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  qrInstructionText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#334155',
+    lineHeight: 18,
+  },
+  qrDetailsWrapper: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 12,
+    alignItems: 'center',
+  },
+  qrLeftCol: {
+    alignItems: 'center',
+    gap: 8,
+    width: 140,
+  },
+  qrLogoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  qrImageBorder: {
+    padding: 4,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    backgroundColor: '#FFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   qrImage: {
-    width: 220,
-    height: 220,
-    borderRadius: 12
+    width: 130,
+    height: 130,
+    borderRadius: 8,
   },
-  qrNote: {
+  qrBankLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  qrRightCol: {
+    flex: 1,
+    gap: 6,
+  },
+  qrDetailRowTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  qrBankAvatar: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+  },
+  qrBankAvatarText: {
+    color: '#1D4ED8',
+    fontWeight: '700',
+    fontSize: 10,
+  },
+  qrDetailLabel: {
+    fontSize: 10,
+    color: '#64748B',
+    marginBottom: 2,
+  },
+  qrBankNameText: {
+    fontWeight: '700',
+    color: '#1E293B',
     fontSize: 12,
-    color: '#10B981',
+  },
+  qrDetailRow: {
+    marginBottom: 4,
+  },
+  qrDetailValUpper: {
+    fontWeight: '700',
+    color: '#1E293B',
+    fontSize: 12,
+    textTransform: 'uppercase',
+  },
+  qrValWithCopy: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  qrDetailVal: {
+    fontWeight: '700',
+    color: '#1E293B',
+    fontSize: 13,
+    flex: 1,
+  },
+  qrCopyBtn: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginLeft: 4,
+  },
+  qrCopyBtnText: {
+    color: '#047857',
+    fontSize: 10,
     fontWeight: '600',
-    textAlign: 'center'
+  },
+  qrNoteBox: {
+    backgroundColor: '#FFF7ED',
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    alignItems: 'center',
+  },
+  qrNoteBoxText: {
+    fontSize: 11,
+    color: '#334155',
+    textAlign: 'center',
+    lineHeight: 16,
   },
   btnOutline: {
     padding: 12,
@@ -541,7 +773,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     width: '100%',
     alignItems: 'center',
-    marginTop: 8
   },
   btnOutlineText: {
     color: '#EF4444',
