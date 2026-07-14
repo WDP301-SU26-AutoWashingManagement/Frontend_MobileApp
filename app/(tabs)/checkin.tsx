@@ -14,6 +14,7 @@ import {
   Modal,
   Platform,
   Linking,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -72,9 +73,19 @@ export default function CheckinScreen() {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [createChecklistBooking, setCreateChecklistBooking] = useState<Booking | null>(null);
   const [viewChecklistBooking, setViewChecklistBooking] = useState<Booking | null>(null);
-  
+  const [checkinMethodBooking, setCheckinMethodBooking] = useState<Booking | null>(null);
+
   const [checklist, setChecklist] = useState<any | null>(null);
   const [loadingChecklist, setLoadingChecklist] = useState(false);
+  const [missingChecklistIds, setMissingChecklistIds] = useState<Set<string>>(new Set());
+  const [loadingChecklists, setLoadingChecklists] = useState<Set<string>>(new Set());
+  const [checkinFailureModal, setCheckinFailureModal] = useState<{
+    visible: boolean;
+    message: string;
+    detectedPlate: string;
+    booking: Booking;
+  } | null>(null);
+  const [failureManualPlate, setFailureManualPlate] = useState('');
 
   const fetchBookings = async () => {
     try {
@@ -83,6 +94,39 @@ export default function CheckinScreen() {
       // Only keep 'confirmed' status bookings (waiting for check-in)
       const confirmed = list.filter((b) => b.booking_status === 'confirmed');
       setBookings(confirmed);
+
+      // Check checklist status for 'confirmed' bookings
+      if (confirmed.length > 0) {
+        const confirmedIds = confirmed.map((b) => b._id);
+        setLoadingChecklists(new Set(confirmedIds));
+
+        const results = await Promise.all(
+          confirmed.map(async (b) => {
+            const id = b._id;
+            try {
+              const data = await bookingService.getChecklist(id);
+              return { id, hasChecklist: !!data };
+            } catch (err) {
+              return { id, hasChecklist: false };
+            }
+          })
+        );
+
+        setMissingChecklistIds((prev) => {
+          const newSet = new Set(prev);
+          results.forEach((r) => {
+            if (!r.hasChecklist) newSet.add(r.id);
+            else newSet.delete(r.id);
+          });
+          return newSet;
+        });
+
+        setLoadingChecklists((prev) => {
+          const newSet = new Set(prev);
+          results.forEach((r) => newSet.delete(r.id));
+          return newSet;
+        });
+      }
     } catch (err: any) {
       console.error('Fetch bookings checkin error:', err);
     } finally {
@@ -116,21 +160,6 @@ export default function CheckinScreen() {
     }
   }, [selectedBooking, viewChecklistBooking, createChecklistBooking]);
 
-  const handleDownloadPdf = async (checklistId: string) => {
-    try {
-      const url = bookingService.getChecklistPdfUrl(checklistId);
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert('Lỗi', 'Không thể mở liên kết tải PDF');
-      }
-    } catch (error) {
-      console.error('Error opening PDF URL:', error);
-      Alert.alert('Lỗi', 'Có lỗi xảy ra khi tải PDF');
-    }
-  };
-
   const handleManualCheckin = async () => {
     const plate = manualPlate.trim().toLowerCase();
     if (!plate) {
@@ -138,7 +167,6 @@ export default function CheckinScreen() {
       return;
     }
 
-    // Find if there is a confirmed booking with this plate
     const matchingBooking = bookings.find((b) => {
       const bPlate = b.vehicle_id?.license_plate || b.vehicle?.license_plate || '';
       return bPlate.toLowerCase().replace(/[^a-z0-9]/g, '') === plate.replace(/[^a-z0-9]/g, '');
@@ -146,6 +174,23 @@ export default function CheckinScreen() {
 
     if (!matchingBooking) {
       Alert.alert('Không tìm thấy', 'Không tìm thấy xe đang chờ nhận với biển số này.');
+      return;
+    }
+
+    if (missingChecklistIds.has(matchingBooking._id)) {
+      Alert.alert(
+        'Chưa tạo biên bản',
+        'Vui lòng tạo biên bản kiểm tra xe trước khi check-in.',
+        [
+          { text: 'Quay lại', style: 'cancel' },
+          {
+            text: 'Tạo Biên bản',
+            onPress: () => {
+              setCreateChecklistBooking(matchingBooking);
+            }
+          }
+        ]
+      );
       return;
     }
 
@@ -162,7 +207,7 @@ export default function CheckinScreen() {
     }
   };
 
-  const handleScanLicensePlate = async (source: 'camera' | 'library') => {
+  const handleScanLicensePlate = async (booking?: Booking, source?: 'camera' | 'library') => {
     try {
       let result;
       if (source === 'camera') {
@@ -204,19 +249,40 @@ export default function CheckinScreen() {
       const response = await bookingService.checkinWithCamera(imageUri, mimeType, fileName);
 
       if (response.success) {
-        Alert.alert(
-          'Check-in Thành Công!',
-          `${response.message}\nBiển số: ${response.license_plate?.toUpperCase()}\nMã đơn: #${response.appointment_id?.slice(-6).toUpperCase()}`
-        );
+        // Double check if the checked-in booking is the one we wanted
+        const scannedId = response.appointment_id || '';
+        const selectedId = booking?._id;
+        
+        if (selectedId && scannedId === selectedId) {
+          Alert.alert(
+            'Check-in Thành Công!',
+            `Đã check-in thành công đơn hàng #${selectedId.slice(-6).toUpperCase()} qua camera AI.`
+          );
+        } else {
+          Alert.alert(
+            'Check-in Thành Công!',
+            `${response.message}\nBiển số: ${response.license_plate?.toUpperCase()}\nMã đơn: #${scannedId.slice(-6).toUpperCase()}`
+          );
+        }
+        setCheckinMethodBooking(null);
         fetchBookings();
       } else {
-        if (response.license_plate) {
-          setManualPlate(response.license_plate.toUpperCase());
+        if (booking) {
+          setCheckinFailureModal({
+            visible: true,
+            message: response.message || 'Không tìm thấy lịch hẹn trùng khớp cho biển số này.',
+            detectedPlate: response.license_plate || '',
+            booking: booking,
+          });
+        } else {
+          if (response.license_plate) {
+            setManualPlate(response.license_plate.toUpperCase());
+          }
+          Alert.alert(
+            'Không tìm thấy lịch hẹn',
+            `${response.message || 'Nhận diện biển số thành công nhưng không tìm thấy lịch hẹn trùng khớp.'}\n\nBiển số nhận diện được: ${response.license_plate?.toUpperCase() || ''}\n\nBạn có thể chỉnh sửa biển số trên màn hình để check-in thủ công.`
+          );
         }
-        Alert.alert(
-          'Không tìm thấy lịch hẹn',
-          `${response.message || 'Nhận diện biển số thành công nhưng không tìm thấy lịch hẹn trùng khớp.'}\n\nBiển số nhận diện được: ${response.license_plate?.toUpperCase() || ''}\n\nBạn có thể chỉnh sửa biển số trên màn hình để check-in thủ công.`
-        );
       }
     } catch (err: any) {
       console.error('Scan error:', err);
@@ -225,30 +291,39 @@ export default function CheckinScreen() {
       const licensePlate = responseData?.license_plate || responseData?.data?.license_plate || '';
       const message = responseData?.message || err.message || 'Lỗi kết nối máy chủ AI hoặc hệ thống.';
 
-      if (licensePlate) {
-        setManualPlate(licensePlate.toUpperCase());
-        Alert.alert(
-          'Không tìm thấy lịch hẹn',
-          `${message}\n\nBiển số nhận diện được: ${licensePlate.toUpperCase()}\n\nBạn có thể chỉnh sửa biển số trên màn hình và bấm check-in lại.`
-        );
+      if (booking) {
+        setCheckinFailureModal({
+          visible: true,
+          message: message,
+          detectedPlate: licensePlate || '',
+          booking: booking,
+        });
       } else {
-        Alert.alert(
-          'Lỗi quét biển số',
-          `${message}\n\nKhông nhận diện được biển số từ ảnh. Vui lòng nhập biển số bằng tay bên dưới để check-in.`
-        );
+        if (licensePlate) {
+          setManualPlate(licensePlate.toUpperCase());
+          Alert.alert(
+            'Không tìm thấy lịch hẹn',
+            `${message}\n\nBiển số nhận diện được: ${licensePlate.toUpperCase()}\n\nBạn có thể chỉnh sửa biển số trên màn hình và bấm check-in lại.`
+          );
+        } else {
+          Alert.alert(
+            'Lỗi quét biển số',
+            `${message}\n\nKhông nhận diện được biển số từ ảnh. Vui lòng nhập biển số bằng tay bên dưới để check-in.`
+          );
+        }
       }
     } finally {
       setIsScanning(false);
     }
   };
 
-  const triggerScanOptions = () => {
+  const triggerScanOptions = (booking?: Booking) => {
     Alert.alert(
       'Chọn nguồn ảnh',
       'Chọn phương thức để quét biển số xe',
       [
-        { text: 'Chụp ảnh camera', onPress: () => handleScanLicensePlate('camera') },
-        { text: 'Chọn từ thư viện ảnh', onPress: () => handleScanLicensePlate('library') },
+        { text: 'Chụp ảnh camera', onPress: () => handleScanLicensePlate(booking, 'camera') },
+        { text: 'Chọn từ thư viện ảnh', onPress: () => handleScanLicensePlate(booking, 'library') },
         { text: 'Hủy', style: 'cancel' },
       ]
     );
@@ -256,17 +331,17 @@ export default function CheckinScreen() {
 
   const handleActionCheckin = async (bookingId: string, plate: string) => {
     Alert.alert(
-      'Xác nhận nhận xe',
-      `Bạn có chắc chắn muốn check-in nhận xe ${plate.toUpperCase()}?`,
+      'Xác nhận check-in',
+      `Bạn có chắc chắn muốn check-in cho xe ${plate.toUpperCase()}?`,
       [
         { text: 'Quay lại', style: 'cancel' },
         {
-          text: 'Nhận xe',
+          text: 'Check-in',
           onPress: async () => {
             try {
               setIsScanning(true);
               await bookingService.checkin(bookingId);
-              Alert.alert('Thành công', 'Nhận xe thành công');
+              Alert.alert('Thành công', 'Check-in thành công');
               setSelectedBooking(null);
               fetchBookings();
             } catch (err: any) {
@@ -280,7 +355,37 @@ export default function CheckinScreen() {
     );
   };
 
-  // Filter bookings based on search query
+  const handleFailureManualCheckin = async () => {
+    if (!checkinFailureModal) return;
+    const { booking } = checkinFailureModal;
+    const typedPlate = failureManualPlate.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const bookingPlate = (booking.vehicle_id?.license_plate || booking.vehicle?.license_plate || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    if (!typedPlate) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập biển số xe.');
+      return;
+    }
+
+    if (typedPlate !== bookingPlate) {
+      Alert.alert('Không khớp', 'Biển số xe nhập vào không khớp với lịch hẹn này.');
+      return;
+    }
+
+    try {
+      setIsScanning(true);
+      await bookingService.checkin(booking._id);
+      Alert.alert('Thành công', 'Check-in thành công');
+      setCheckinFailureModal(null);
+      setCheckinMethodBooking(null);
+      setFailureManualPlate('');
+      fetchBookings();
+    } catch (err: any) {
+      Alert.alert('Lỗi', err.message || 'Check-in thất bại');
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
   const filteredBookings = bookings.filter((b) => {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
@@ -334,12 +439,26 @@ export default function CheckinScreen() {
           </View>
         </View>
 
-        <Pressable
-          style={({ pressed }) => [styles.cardBtn, pressed && { opacity: 0.85 }]}
-          onPress={() => handleActionCheckin(item._id, plate)}>
-          <MaterialCommunityIcons name="check-circle-outline" size={16} color="#FFFFFF" />
-          <Text style={styles.cardBtnText}>Xác nhận Nhận xe</Text>
-        </Pressable>
+        {loadingChecklists.has(item._id) ? (
+          <View style={[styles.cardBtn, { backgroundColor: '#94A3B8' }]}>
+            <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
+            <Text style={styles.cardBtnText}>Đang tải...</Text>
+          </View>
+        ) : missingChecklistIds.has(item._id) ? (
+          <Pressable
+            style={({ pressed }) => [styles.cardBtn, { backgroundColor: ROSE }, pressed && { opacity: 0.85 }]}
+            onPress={() => setCreateChecklistBooking(item)}>
+            <MaterialCommunityIcons name="file-document-outline" size={16} color="#FFFFFF" />
+            <Text style={styles.cardBtnText}>Tạo Biên bản</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            style={({ pressed }) => [styles.cardBtn, pressed && { opacity: 0.85 }]}
+            onPress={() => setCheckinMethodBooking(item)}>
+            <MaterialCommunityIcons name="qrcode-scan" size={16} color="#FFFFFF" />
+            <Text style={styles.cardBtnText}>Check-in</Text>
+          </Pressable>
+        )}
       </Pressable>
     );
   };
@@ -362,56 +481,6 @@ export default function CheckinScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        {/* Camera Quick Action Card */}
-        <View style={styles.actionCard}>
-          <View style={styles.cardGlow} />
-          <View style={styles.actionCardContent}>
-            <View style={styles.badge}>
-              <MaterialCommunityIcons name="robot" size={14} color="#A5F3FC" />
-              <Text style={styles.badgeText}>AI nhận diện biển số</Text>
-            </View>
-            <Text style={styles.actionTitle}>Quét Biển Số Tự Động</Text>
-            <Text style={styles.actionDesc}>Chụp ảnh biển số xe để hệ thống tự động tìm lịch hẹn và làm thủ tục check-in.</Text>
-
-            {isScanning ? (
-              <View style={[styles.scanBtn, styles.scanBtnDisabled]}>
-                <ActivityIndicator size="small" color="#FFFFFF" />
-                <Text style={styles.scanBtnText}>Đang phân tích ảnh...</Text>
-              </View>
-            ) : (
-              <Pressable style={({ pressed }) => [styles.scanBtn, pressed && { opacity: 0.9 }]} onPress={triggerScanOptions}>
-                <MaterialCommunityIcons name="camera" size={20} color="#FFFFFF" />
-                <Text style={styles.scanBtnText}>QUÉT BIỂN SỐ XE</Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
-
-        {/* Manual Checkin Card */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Nhận xe thủ công</Text>
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.input}
-              placeholder="Nhập biển số (ví dụ: 30F-12345)"
-              placeholderTextColor="#94A3B8"
-              value={manualPlate}
-              onChangeText={setManualPlate}
-              autoCapitalize="characters"
-              editable={!isScanning}
-            />
-            <Pressable
-              style={({ pressed }) => [styles.inputBtn, pressed && { opacity: 0.85 }, isScanning && styles.inputBtnDisabled]}
-              onPress={handleManualCheckin}
-              disabled={isScanning}>
-              {isScanning ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.inputBtnText}>Check-in</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
 
         {/* List of Waiting Cars */}
         <View style={styles.listSection}>
@@ -473,34 +542,34 @@ export default function CheckinScreen() {
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Chi tiết lịch hẹn</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                     {loadingChecklist ? (
-                       <ActivityIndicator size="small" color="#0891B2" />
-                     ) : checklist ? (
-                       <Pressable 
-                         style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E0F2FE', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
-                         onPress={() => {
-                           setViewChecklistBooking(selectedBooking);
-                           setSelectedBooking(null);
-                         }}
-                       >
-                         <Ionicons name="document-text" size={16} color="#0369A1" style={{ marginRight: 4 }} />
-                         <Text style={{ color: '#0369A1', fontSize: 13, fontWeight: '700' }}>Biên bản</Text>
-                       </Pressable>
-                     ) : (
-                       <Pressable 
-                         style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0891B2', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
-                         onPress={() => {
-                           setCreateChecklistBooking(selectedBooking);
-                           setSelectedBooking(null);
-                         }}
-                       >
-                         <Ionicons name="document-text-outline" size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
-                         <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Tạo Biên bản</Text>
-                       </Pressable>
-                     )}
-                     <Pressable onPress={() => setSelectedBooking(null)} style={styles.closeBtn}>
-                       <Ionicons name="close" size={24} color={DARK} />
-                     </Pressable>
+                    {loadingChecklist ? (
+                      <ActivityIndicator size="small" color="#0891B2" />
+                    ) : checklist ? (
+                      <Pressable
+                        style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E0F2FE', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+                        onPress={() => {
+                          setViewChecklistBooking(selectedBooking);
+                          setSelectedBooking(null);
+                        }}
+                      >
+                        <Ionicons name="document-text" size={16} color="#0369A1" style={{ marginRight: 4 }} />
+                        <Text style={{ color: '#0369A1', fontSize: 13, fontWeight: '700' }}>Biên bản</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable
+                        style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0891B2', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+                        onPress={() => {
+                          setCreateChecklistBooking(selectedBooking);
+                          setSelectedBooking(null);
+                        }}
+                      >
+                        <Ionicons name="document-text-outline" size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
+                        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Tạo Biên bản</Text>
+                      </Pressable>
+                    )}
+                    <Pressable onPress={() => setSelectedBooking(null)} style={styles.closeBtn}>
+                      <Ionicons name="close" size={24} color={DARK} />
+                    </Pressable>
                   </View>
                 </View>
 
@@ -688,15 +757,25 @@ export default function CheckinScreen() {
                 <View style={styles.modalFooter}>
                   {isScanning ? (
                     <ActivityIndicator size="small" color={CYAN} style={{ alignSelf: 'center', padding: 12 }} />
-                  ) : (
+                  ) : missingChecklistIds.has(selectedBooking._id) ? (
                     <Pressable
-                      style={[styles.modalActionBtn, { backgroundColor: PURPLE }]}
+                      style={[styles.modalActionBtn, { backgroundColor: ROSE }]}
                       onPress={() => {
-                        const plate = selectedBooking.vehicle_id?.license_plate || selectedBooking.vehicle?.license_plate || '';
-                        handleActionCheckin(selectedBooking._id, plate);
+                        setCreateChecklistBooking(selectedBooking);
+                        setSelectedBooking(null);
                       }}
                     >
-                      <Text style={styles.modalActionBtnText}>Xác nhận Nhận xe</Text>
+                      <Text style={styles.modalActionBtnText}>Tạo Biên bản</Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      style={[styles.modalActionBtn, { backgroundColor: CYAN }]}
+                      onPress={() => {
+                        setSelectedBooking(null);
+                        setCheckinMethodBooking(selectedBooking);
+                      }}
+                    >
+                      <Text style={styles.modalActionBtnText}>Check-in</Text>
                     </Pressable>
                   )}
                 </View>
@@ -730,6 +809,119 @@ export default function CheckinScreen() {
             setSelectedBooking(viewChecklistBooking);
           }}
         />
+      )}
+
+      {/* CHỌN PHƯƠNG THỨC CHECK-IN MODAL */}
+      {checkinMethodBooking && (
+        <Modal
+          visible={!!checkinMethodBooking}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCheckinMethodBooking(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <Pressable style={styles.modalBackdrop} onPress={() => setCheckinMethodBooking(null)} />
+            <View style={styles.checkinMethodModalContent}>
+              <Text style={styles.checkinMethodTitle}>Phương thức Check-in</Text>
+              <Text style={styles.checkinMethodDesc}>
+                Đơn <Text style={{ fontWeight: '700' }}>#{(checkinMethodBooking._id).slice(-6).toUpperCase()}</Text> đã có biên bản kiểm tra. Vui lòng chọn cách check-in:
+              </Text>
+              <View style={{ gap: 12 }}>
+                {isScanning ? (
+                  <View style={[styles.checkinMethodBtn, { backgroundColor: CYAN }]}>
+                    <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 8 }} />
+                    <Text style={[styles.checkinMethodBtnText, { color: '#FFFFFF' }]}>Đang quét...</Text>
+                  </View>
+                ) : (
+                  <Pressable
+                    style={[styles.checkinMethodBtn, { backgroundColor: CYAN }]}
+                    onPress={() => {
+                      setCheckinMethodBooking(null);
+                      triggerScanOptions(checkinMethodBooking);
+                    }}
+                  >
+                    <MaterialCommunityIcons name="camera" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                    <Text style={[styles.checkinMethodBtnText, { color: '#FFFFFF' }]}>Quét bằng Camera AI</Text>
+                  </Pressable>
+                )}
+
+                <Pressable
+                  style={[styles.checkinMethodBtn, { backgroundColor: '#F1F5F9' }]}
+                  onPress={() => {
+                    const booking = checkinMethodBooking;
+                    const plate = booking.vehicle_id?.license_plate || booking.vehicle?.license_plate || '';
+                    setCheckinMethodBooking(null);
+                    handleActionCheckin(booking._id, plate);
+                  }}
+                >
+                  <MaterialCommunityIcons name="check-circle-outline" size={18} color={DARK} style={{ marginRight: 8 }} />
+                  <Text style={[styles.checkinMethodBtnText, { color: DARK }]}>Check-in thủ công</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.checkinMethodCancelBtn}
+                  onPress={() => setCheckinMethodBooking(null)}
+                >
+                  <Text style={styles.checkinMethodCancelText}>Hủy bỏ</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* CHECK-IN FAILURE MANUAL RETRY MODAL */}
+      {checkinFailureModal && (
+        <Modal
+          visible={checkinFailureModal.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCheckinFailureModal(null)}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+          >
+            <View style={styles.modalOverlay}>
+              <Pressable style={styles.modalBackdrop} onPress={() => setCheckinFailureModal(null)} />
+              <View style={styles.checkinFailureModalContent}>
+                <View style={styles.checkinFailureHeader}>
+                  <Ionicons name="close-circle" size={48} color={ROSE} style={{ marginBottom: 12 }} />
+                  <Text style={styles.checkinFailureTitle}>Thất bại</Text>
+                  <Text style={styles.checkinFailureDesc}>{checkinFailureModal.message}</Text>
+                </View>
+
+                <TextInput
+                  style={styles.checkinFailureInput}
+                  placeholder="NHẬP LẠI BIỂN SỐ BẰNG TAY"
+                  placeholderTextColor="#94A3B8"
+                  value={failureManualPlate}
+                  onChangeText={setFailureManualPlate}
+                  autoCapitalize="characters"
+                />
+
+                <View style={{ gap: 12, marginTop: 8 }}>
+                  <Pressable
+                    style={[styles.checkinFailureBtn, { backgroundColor: '#1E293B' }]}
+                    onPress={handleFailureManualCheckin}
+                  >
+                    <Text style={[styles.checkinFailureBtnText, { color: '#FFFFFF' }]}>Check-in</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.checkinFailureBtn, { backgroundColor: '#F1F5F9' }]}
+                    onPress={() => {
+                      setCheckinFailureModal(null);
+                      setFailureManualPlate('');
+                    }}
+                  >
+                    <Text style={[styles.checkinFailureBtnText, { color: DARK }]}>Đóng</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       )}
     </View>
   );
@@ -1029,7 +1221,7 @@ const styles = StyleSheet.create({
   },
   cardBtn: {
     width: '100%',
-    backgroundColor: PURPLE,
+    backgroundColor: CYAN,
     borderRadius: 10,
     paddingVertical: 10,
     flexDirection: 'row',
@@ -1167,6 +1359,107 @@ const styles = StyleSheet.create({
   modalActionBtnText: {
     color: '#FFFFFF',
     fontSize: 15,
+    fontWeight: '700',
+  },
+  checkinMethodModalContent: {
+    backgroundColor: SURFACE,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  checkinMethodTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: DARK,
+    marginBottom: 8,
+  },
+  checkinMethodDesc: {
+    fontSize: 14,
+    color: '#475569',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  checkinMethodBtn: {
+    width: '100%',
+    borderRadius: 12,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkinMethodBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  checkinMethodCancelBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    paddingVertical: 10,
+  },
+  checkinMethodCancelText: {
+    fontSize: 14,
+    color: GRAY,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  checkinFailureModalContent: {
+    backgroundColor: SURFACE,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  checkinFailureHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  checkinFailureTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: DARK,
+    marginBottom: 6,
+  },
+  checkinFailureDesc: {
+    fontSize: 14,
+    color: GRAY,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  checkinFailureInput: {
+    width: '100%',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 48,
+    fontSize: 14,
+    fontWeight: '700',
+    color: DARK,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  checkinFailureBtn: {
+    width: '100%',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkinFailureBtnText: {
+    fontSize: 14,
     fontWeight: '700',
   },
 });

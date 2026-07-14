@@ -33,7 +33,7 @@ export default function Branches() {
     const lat = branch.geo?.latitude;
     const lng = branch.geo?.longitude;
     if (lat && lng) {
-      const label = encodeURIComponent(branch.branch_address?.street || 'AutoWash');
+      const label = encodeURIComponent(branch.branch_address?.street || 'HybridWash');
       
       // Platform-specific map URI schemes
       const scheme = Platform.select({
@@ -81,9 +81,9 @@ export default function Branches() {
     <View style={styles.section} id="locations">
       <View style={styles.header}>
         <Text style={styles.label}>Hệ thống</Text>
-        <Text style={styles.title}>Hệ thống chi nhánh AutoWash</Text>
+        <Text style={styles.title}>Hệ thống chi nhánh HybridWash</Text>
         <Text style={styles.subTitle}>
-          Với mạng lưới chi nhánh rộng khắp, AutoWash luôn sẵn sàng phục vụ và chăm sóc xế yêu của bạn một cách nhanh chóng và chuyên nghiệp nhất.
+          Với mạng lưới chi nhánh rộng khắp, HybridWash luôn sẵn sàng phục vụ và chăm sóc xế yêu của bạn một cách nhanh chóng và chuyên nghiệp nhất.
         </Text>
       </View>
 

@@ -5,9 +5,9 @@ import { Platform } from 'react-native';
 
 export const API_CONFIG = {
   // Backend API Base URL
-  API_BASE_URL: Platform.OS === 'web' 
+  API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL || (Platform.OS === 'web' 
     ? 'http://localhost:3000/api/v1' 
-    : (process.env.EXPO_PUBLIC_API_BASE_URL || 'http://172.20.10.3:3000/api/v1'),
+    : 'http://172.20.10.3:3000/api/v1'),
 
   // API Timeout in milliseconds
   API_TIMEOUT: parseInt(process.env.EXPO_PUBLIC_API_TIMEOUT || '15000', 10),

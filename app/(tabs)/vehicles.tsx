@@ -292,7 +292,7 @@ export default function VehiclesScreen() {
             <MaterialCommunityIcons name="shield-car" size={18} color={CYAN} />
             <Text style={styles.dbTitle}>Gara của tôi</Text>
           </View>
-          <Text style={styles.dbSub}>Hệ thống AutoWash đã sẵn sàng kết nối</Text>
+          <Text style={styles.dbSub}>Hệ thống HybridWash đã sẵn sàng kết nối</Text>
         </View>
 
         <View style={styles.dbGrid}>
@@ -471,7 +471,7 @@ export default function VehiclesScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Gara Phương Tiện</Text>
-          <Text style={styles.headerSub}>Quản lý xe để kết nối trạm AutoWash</Text>
+          <Text style={styles.headerSub}>Quản lý xe để kết nối trạm HybridWash</Text>
         </View>
         <Pressable
           style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.85 }]}
@@ -512,7 +512,7 @@ export default function VehiclesScreen() {
               <MaterialCommunityIcons name="car-connected" size={42} color={CYAN} />
             </View>
             <Text style={styles.stateTitle}>Gara của bạn đang trống</Text>
-            <Text style={styles.stateSub}>Thêm phương tiện ngay để trải nghiệm công nghệ rửa xe tự động AutoWash siêu tốc.</Text>
+            <Text style={styles.stateSub}>Thêm phương tiện ngay để trải nghiệm công nghệ rửa xe tự động HybridWash siêu tốc.</Text>
             <Pressable style={styles.emptyAddBtn} onPress={openCreateModal}>
               <MaterialCommunityIcons name="plus" size={16} color="#FFFFFF" />
               <Text style={styles.emptyAddBtnText}>Đăng ký xe đầu tiên</Text>
