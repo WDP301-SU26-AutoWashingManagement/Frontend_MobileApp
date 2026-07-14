@@ -67,6 +67,8 @@ export interface User {
     membership_points?: number;
     reward_points?: number;
     tier_id?: string;
+    staff_type?: string;
+    branch_id?: string;
   } | null;
 }
 

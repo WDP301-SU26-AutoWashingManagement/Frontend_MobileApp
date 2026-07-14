@@ -25,7 +25,6 @@ import promotionService, { Promotion } from '../../services/promotionService';
 import vehicleService, { Vehicle } from '../../services/vehicleService';
 import branchService, { Branch } from '../../services/branchService';
 import servicePackageService from '../../services/servicePackageService';
-import PaymentModal from '../../components/PaymentModal';
 
 const { width } = Dimensions.get('window');
 
@@ -40,6 +39,8 @@ const getStatusStyles = (status: Booking['booking_status']) => {
       return { text: '#7C3AED', bg: 'rgba(139,92,246,0.08)', border: 'rgba(139,92,246,0.18)' };
     case 'in_progress':
       return { text: '#DB2777', bg: 'rgba(236,72,153,0.08)', border: 'rgba(236,72,153,0.18)' };
+    case 'washed':
+      return { text: '#0D9488', bg: 'rgba(13,148,136,0.08)', border: 'rgba(13,148,136,0.18)' };
     case 'completed':
       return { text: '#059669', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.18)' };
     case 'cancelled':
@@ -59,6 +60,8 @@ const getStatusLabel = (status: Booking['booking_status']) => {
       return 'Đã check-in';
     case 'in_progress':
       return 'Đang rửa xe';
+    case 'washed':
+      return 'Rửa xong';
     case 'completed':
       return 'Hoàn thành';
     case 'cancelled':
@@ -119,7 +122,7 @@ export default function BookingsScreen() {
     }, [])
   );
 
-  const [paymentModal, setPaymentModal] = useState<{ isOpen: boolean, booking: Booking | null }>({ isOpen: false, booking: null });
+
 
   const handleCancelBooking = (bookingId: string) => {
     Alert.alert(
@@ -401,19 +404,6 @@ export default function BookingsScreen() {
                 <Text style={styles.cancelBtnText}>Hủy lịch</Text>
               </Pressable>
             )}
-            
-            {item.booking_status === 'washed' && (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.actionBtn, 
-                  styles.payBtn,
-                  pressed && { opacity: 0.7 }
-                ]}
-                onPress={() => setPaymentModal({ isOpen: true, booking: item })}>
-                <MaterialCommunityIcons name="credit-card-outline" size={16} color="#FFFFFF" />
-                <Text style={styles.payBtnText}>Thanh toán ngay</Text>
-              </Pressable>
-            )}
           </View>
         </View>
       </View>
@@ -485,15 +475,7 @@ export default function BookingsScreen() {
         router={router}
       />
 
-      <PaymentModal
-        isOpen={paymentModal.isOpen}
-        onClose={() => setPaymentModal({ isOpen: false, booking: null })}
-        booking={paymentModal.booking}
-        onSuccess={() => {
-          setPaymentModal({ isOpen: false, booking: null });
-          fetchBookings();
-        }}
-      />
+
     </View>
   );
 }

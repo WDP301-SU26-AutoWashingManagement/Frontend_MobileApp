@@ -22,7 +22,7 @@ import { useAuth } from '../../hooks/useAuthService';
 import bookingService, { Booking } from '../../services/bookingService';
 
 const TAB_CONFIG = [
-  { id: 'upcoming', label: 'Sắp tới' },
+  { id: 'upcoming', label: 'Đanng xử lí' },
   { id: 'completed', label: 'Hoàn thành' },
   { id: 'cancelled', label: 'Đã hủy' },
 ] as const;
@@ -57,7 +57,7 @@ function formatScheduledAt(iso: string): string {
     const year = d.getFullYear();
     const hours = String(d.getHours()).padStart(2, '0');
     const minutes = String(d.getMinutes()).padStart(2, '0');
-    
+
     const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
     const weekday = days[d.getDay()];
 
@@ -453,13 +453,13 @@ export default function HistoryScreen() {
                       <View style={styles.checklistInfo}>
                         <Text style={styles.checklistTitle}>Biên bản đồng kiểm xe</Text>
                         <Text style={styles.checklistTime}>
-                          Đã kiểm tra lúc {checklist.createdAt 
-                            ? new Date(checklist.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) 
+                          Đã kiểm tra lúc {checklist.createdAt
+                            ? new Date(checklist.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
                             : '...'}
                         </Text>
                       </View>
-                      <Pressable 
-                        style={styles.downloadPdfButton} 
+                      <Pressable
+                        style={styles.downloadPdfButton}
                         onPress={() => handleDownloadPdf(checklist._id)}
                       >
                         <MaterialCommunityIcons name="download" size={16} color="#0891B2" />
