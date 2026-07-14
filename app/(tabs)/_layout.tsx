@@ -80,13 +80,23 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Transactions - Visible only when authenticated and is staff */}
+      {/* Transactions - Visible only when authenticated and is staff manager */}
       <Tabs.Screen
         name="transactions"
         options={{
           title: 'Giao dịch',
-          href: (!isAuthenticated || user?.role !== 'staff') ? null : undefined,
+          href: (!isAuthenticated || user?.role !== 'staff' || user?.role_data?.staff_type === 'technical') ? null : undefined,
           tabBarIcon: ({ color }) => <MaterialCommunityIcons size={24} name="receipt" color={color} />,
+        }}
+      />
+
+      {/* Staff Attendance - Visible only when authenticated and is staff technical */}
+      <Tabs.Screen
+        name="attendance"
+        options={{
+          title: 'Điểm danh',
+          href: (!isAuthenticated || user?.role !== 'staff' || user?.role_data?.staff_type !== 'technical') ? null : undefined,
+          tabBarIcon: ({ color }) => <MaterialCommunityIcons size={24} name="fingerprint" color={color} />,
         }}
       />
 

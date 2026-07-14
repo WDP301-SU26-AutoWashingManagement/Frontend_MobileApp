@@ -100,6 +100,7 @@ const formatBranchAddress = (branch: any) => {
 export default function TransactionsScreen() {
   const { user } = useAuth();
   const isStaff = user?.role === 'staff';
+  const isTechnical = user?.role === 'staff' && user?.role_data?.staff_type === 'technical';
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -169,7 +170,7 @@ export default function TransactionsScreen() {
 
   // Load transactions (Staff only)
   const loadTransactions = useCallback(async (showLoading = true) => {
-    if (!isStaff) {
+    if (!isStaff || isTechnical) {
       setLoading(false);
       return;
     }
@@ -278,11 +279,11 @@ export default function TransactionsScreen() {
     };
   }, [filteredItems]);
 
-  if (!isStaff) {
+  if (!isStaff || isTechnical) {
     return (
       <View style={styles.container}>
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Chỉ nhân viên mới có quyền xem trang này.</Text>
+          <Text style={styles.loadingText}>Chỉ nhân viên quản lý mới có quyền xem trang này.</Text>
         </View>
       </View>
     );
