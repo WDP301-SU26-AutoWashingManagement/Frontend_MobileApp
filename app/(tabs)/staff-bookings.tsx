@@ -313,12 +313,14 @@ export default function StaffBookingsScreen() {
         if (scannedId === selectedId) {
           Alert.alert(
             'Check-in Thành Công!',
-            `Đã check-in thành công đơn hàng #${selectedId.slice(-6).toUpperCase()} qua camera AI.`
+            `Đã check-in thành công đơn hàng ${booking.appointment_code || `#${selectedId.slice(-6).toUpperCase()}`} qua camera AI.`
           );
         } else {
+          const scannedBooking = bookings.find(b => b._id === scannedId);
+          const scannedCode = scannedBooking?.appointment_code || `#${scannedId.slice(-6).toUpperCase()}`;
           Alert.alert(
             'Check-in Thành Công!',
-            `${response.message}\nBiển số: ${response.license_plate?.toUpperCase()}\nMã đơn: #${scannedId.slice(-6).toUpperCase()}`
+            `${response.message}\nBiển số: ${response.license_plate?.toUpperCase()}\nMã đơn: ${scannedCode}`
           );
         }
         setCheckinMethodBooking(null);
@@ -457,7 +459,7 @@ export default function StaffBookingsScreen() {
     const bookingVehicle = item.vehicle_id || item.vehicle;
     const bookingBranch = item.branch_id || item.branch;
     const vehicleName = getVehicleDisplayName(bookingVehicle);
-    const shortId = item._id.slice(-6).toUpperCase();
+    const shortId = item.appointment_code || `#${item._id.slice(-6).toUpperCase()}`;
 
     // Render action buttons based on status
     const renderActionBtn = () => {
@@ -570,7 +572,7 @@ export default function StaffBookingsScreen() {
         <View style={styles.bookingDetails}>
           {/* ID & License Plate Row */}
           <View style={styles.idPlateRow}>
-            <Text style={styles.bookingIdText}>Mã đơn: #{shortId}</Text>
+            <Text style={styles.bookingIdText}>Mã đơn: {shortId}</Text>
             {bookingVehicle?.license_plate && (
               <View style={styles.plateContainer}>
                 <View style={styles.plateInnerBorder}>
@@ -827,7 +829,7 @@ export default function StaffBookingsScreen() {
                           {getStatusLabel(selectedBooking.booking_status)}
                         </Text>
                       </View>
-                      <Text style={styles.modalIdText}>#{selectedBooking._id.toUpperCase()}</Text>
+                      <Text style={styles.modalIdText}>{selectedBooking.appointment_code || `#${selectedBooking._id.slice(-6).toUpperCase()}`}</Text>
                     </View>
                   </View>
 
@@ -1139,7 +1141,7 @@ export default function StaffBookingsScreen() {
             <View style={styles.checkinMethodModalContent}>
               <Text style={styles.checkinMethodTitle}>Phương thức Check-in</Text>
               <Text style={styles.checkinMethodDesc}>
-                Đơn <Text style={{ fontWeight: '700' }}>#{(checkinMethodBooking._id).slice(-6).toUpperCase()}</Text> đã có biên bản kiểm tra. Vui lòng chọn cách check-in:
+                Đơn <Text style={{ fontWeight: '700' }}>{checkinMethodBooking.appointment_code || `#${(checkinMethodBooking._id).slice(-6).toUpperCase()}`}</Text> đã có biên bản kiểm tra. Vui lòng chọn cách check-in:
               </Text>
               <View style={{ gap: 12 }}>
                 {isScanning ? (

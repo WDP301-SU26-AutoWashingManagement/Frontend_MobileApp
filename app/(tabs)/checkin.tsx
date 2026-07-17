@@ -256,12 +256,14 @@ export default function CheckinScreen() {
         if (selectedId && scannedId === selectedId) {
           Alert.alert(
             'Check-in Thành Công!',
-            `Đã check-in thành công đơn hàng #${selectedId.slice(-6).toUpperCase()} qua camera AI.`
+            `Đã check-in thành công đơn hàng ${booking?.appointment_code || `#${selectedId.slice(-6).toUpperCase()}`} qua camera AI.`
           );
         } else {
+          const scannedBooking = bookings.find(b => b._id === scannedId);
+          const scannedCode = scannedBooking?.appointment_code || `#${scannedId.slice(-6).toUpperCase()}`;
           Alert.alert(
             'Check-in Thành Công!',
-            `${response.message}\nBiển số: ${response.license_plate?.toUpperCase()}\nMã đơn: #${scannedId.slice(-6).toUpperCase()}`
+            `${response.message}\nBiển số: ${response.license_plate?.toUpperCase()}\nMã đơn: ${scannedCode}`
           );
         }
         setCheckinMethodBooking(null);
@@ -391,7 +393,8 @@ export default function CheckinScreen() {
     if (!q) return true;
     const plate = (b.vehicle_id?.license_plate || b.vehicle?.license_plate || '').toLowerCase();
     const shortId = b._id.slice(-6).toLowerCase();
-    return plate.includes(q) || shortId.includes(q) || b._id.toLowerCase().includes(q);
+    const apptCode = b.appointment_code?.toLowerCase() || '';
+    return plate.includes(q) || shortId.includes(q) || b._id.toLowerCase().includes(q) || apptCode.includes(q);
   });
 
   const getVehicleDisplayName = (vehicle: any) => {
@@ -404,7 +407,7 @@ export default function CheckinScreen() {
   const renderBookingItem = ({ item }: { item: Booking }) => {
     const bookingVehicle = item.vehicle_id || item.vehicle;
     const plate = bookingVehicle?.license_plate || 'N/A';
-    const shortId = item._id.slice(-6).toUpperCase();
+    const shortId = item.appointment_code || `#${item._id.slice(-6).toUpperCase()}`;
     const scheduledDate = new Date(item.scheduled_at);
     const timeFormatted = scheduledDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     const dateFormatted = scheduledDate.toLocaleDateString('vi-VN');
@@ -419,7 +422,7 @@ export default function CheckinScreen() {
               <Text style={styles.plateText}>{plate.toUpperCase()}</Text>
             </View>
           </View>
-          <Text style={styles.bookingIdText}>Mã: #{shortId}</Text>
+          <Text style={styles.bookingIdText}>Mã: {shortId}</Text>
         </View>
 
         <View style={styles.cardDivider} />
@@ -590,7 +593,7 @@ export default function CheckinScreen() {
                           {getStatusLabel(selectedBooking.booking_status)}
                         </Text>
                       </View>
-                      <Text style={styles.modalIdText}>#{selectedBooking._id.toUpperCase()}</Text>
+                      <Text style={styles.modalIdText}>{selectedBooking.appointment_code || `#${selectedBooking._id.slice(-6).toUpperCase()}`}</Text>
                     </View>
                   </View>
 
@@ -824,7 +827,7 @@ export default function CheckinScreen() {
             <View style={styles.checkinMethodModalContent}>
               <Text style={styles.checkinMethodTitle}>Phương thức Check-in</Text>
               <Text style={styles.checkinMethodDesc}>
-                Đơn <Text style={{ fontWeight: '700' }}>#{(checkinMethodBooking._id).slice(-6).toUpperCase()}</Text> đã có biên bản kiểm tra. Vui lòng chọn cách check-in:
+                Đơn <Text style={{ fontWeight: '700' }}>{checkinMethodBooking.appointment_code || `#${(checkinMethodBooking._id).slice(-6).toUpperCase()}`}</Text> đã có biên bản kiểm tra. Vui lòng chọn cách check-in:
               </Text>
               <View style={{ gap: 12 }}>
                 {isScanning ? (
