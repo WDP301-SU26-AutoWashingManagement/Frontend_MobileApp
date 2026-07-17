@@ -151,20 +151,20 @@ export default function ProfileScreen() {
           {/* Stats row */}
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{user?.role === 'customer' ? 'Khách hàng' : user?.role || '—'}</Text>
               <Text style={styles.statLabel}>Vai trò</Text>
+              <Text style={styles.statValue}>{user?.role === 'customer' ? 'Khách hàng' : user?.role || '—'}</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Tham gia</Text>
               <Text style={styles.statValue}>
                 {(user as any)?.createdAt || user?.created_at ? new Date((user as any)?.createdAt || user?.created_at || '').toLocaleDateString('vi-VN', { month: 'short', year: 'numeric' }) : '—'}
               </Text>
-              <Text style={styles.statLabel}>Tham gia</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{user?.phone ? '✓' : '—'}</Text>
               <Text style={styles.statLabel}>Điện thoại</Text>
+              <Text style={styles.statValue}>{user?.phone ? '✓' : '—'}</Text>
             </View>
           </View>
         </View>
