@@ -27,7 +27,7 @@ export default function PaymentModal({ isOpen, onClose, booking, onSuccess }: Pa
   const [promotions, setPromotions] = useState<(Promotion & { calculatedDiscount: number })[]>([]);
   const [selectedPromotionId, setSelectedPromotionId] = useState<string | null>(null);
   const [loadingPromotions, setLoadingPromotions] = useState(false);
-  const [bankInfo, setBankInfo] = useState<{ accountName: string, accountNumber: string, bankName: string } | null>(null);
+  const [bankInfo, setBankInfo] = useState<{ accountName: string, accountNumber: string, bankName: string, addInfo?: string } | null>(null);
 
   useEffect(() => {
     if (paymentMode === 'qr' && invoice?.qr_code) {
@@ -40,14 +40,16 @@ export default function PaymentModal({ isOpen, onClose, booking, onSuccess }: Pa
             setBankInfo({
               accountName: parsed.accountName,
               accountNumber: parsed.accountNumber,
-              bankName: bank ? bank.shortName : parsed.bin
+              bankName: bank ? bank.shortName : parsed.bin,
+              addInfo: parsed.addInfo
             });
           })
           .catch(() => {
             setBankInfo({
               accountName: parsed.accountName,
               accountNumber: parsed.accountNumber,
-              bankName: parsed.bin
+              bankName: parsed.bin,
+              addInfo: parsed.addInfo
             });
           });
       }
@@ -455,8 +457,8 @@ export default function PaymentModal({ isOpen, onClose, booking, onSuccess }: Pa
                               <View style={styles.qrDetailRow}>
                                  <Text style={styles.qrDetailLabel}>Nội dung:</Text>
                                  <View style={styles.qrValWithCopy}>
-                                    <Text style={styles.qrDetailVal}>{invoice.order_code}</Text>
-                                    <Pressable style={styles.qrCopyBtn} onPress={() => { Clipboard.setStringAsync(invoice.order_code?.toString() || ''); Alert.alert('Đã copy', 'Nội dung chuyển khoản đã được copy') }}>
+                                    <Text style={styles.qrDetailVal}>{bankInfo.addInfo || invoice.order_code}</Text>
+                                    <Pressable style={styles.qrCopyBtn} onPress={() => { Clipboard.setStringAsync((bankInfo.addInfo || invoice.order_code)?.toString() || ''); Alert.alert('Đã copy', 'Nội dung chuyển khoản đã được copy') }}>
                                        <Text style={styles.qrCopyBtnText}>Sao chép</Text>
                                     </Pressable>
                                  </View>
@@ -473,7 +475,7 @@ export default function PaymentModal({ isOpen, onClose, booking, onSuccess }: Pa
 
                   <View style={styles.qrNoteBox}>
                      <Text style={styles.qrNoteBoxText}>
-                        Lưu ý: Nhập chính xác số tiền <Text style={{ fontWeight: '700', color: '#0F172A' }}>{(invoice.total || 0).toLocaleString('vi-VN')}</Text>, nội dung <Text style={{ fontWeight: '700', color: '#0F172A' }}>{invoice.order_code}</Text> khi chuyển khoản
+                        Lưu ý: Nhập chính xác số tiền <Text style={{ fontWeight: '700', color: '#0F172A' }}>{(invoice.total || 0).toLocaleString('vi-VN')}</Text>, nội dung <Text style={{ fontWeight: '700', color: '#0F172A' }}>{bankInfo?.addInfo || invoice.order_code}</Text> khi chuyển khoản
                      </Text>
                   </View>
 

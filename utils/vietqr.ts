@@ -20,6 +20,8 @@ export function parseVietQR(qrStr: string) {
     const accountName = root['59'];
     let accountNumber = '';
     let bin = '';
+    let addInfo = '';
+
     if (root['38']) {
       const t38 = parseTags(root['38']);
       if (t38['01']) {
@@ -29,8 +31,15 @@ export function parseVietQR(qrStr: string) {
       }
     }
     
+    if (root['62']) {
+      const t62 = parseTags(root['62']);
+      if (t62['08']) {
+        addInfo = t62['08'];
+      }
+    }
+    
     if (accountName || accountNumber) {
-       return { accountName, accountNumber, bin };
+       return { accountName, accountNumber, bin, addInfo };
     }
     return null;
   } catch (e) {
