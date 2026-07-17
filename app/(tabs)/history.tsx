@@ -548,14 +548,14 @@ export default function HistoryScreen() {
                       </>
                     );
                   })()}
-                  <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Hóa đơn VAT:</Text>
-                    <Text style={styles.modalValue}>
-                      {detailModal.vat_requested
-                        ? `Có (MST: ${detailModal.tax_code || '—'})`
-                        : 'Không'}
-                    </Text>
-                  </View>
+                  {detailModal.booking_status === 'completed' && detailModal.payment_method && (
+                    <View style={styles.modalRow}>
+                      <Text style={styles.modalLabel}>Hình thức giao dịch:</Text>
+                      <Text style={[styles.modalValue, styles.bold]}>
+                        {detailModal.payment_method === 'bank' ? 'Chuyển khoản' : 'Tiền mặt'}
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
                 {detailModal.booking_status === 'cancelled' && (

@@ -211,9 +211,10 @@ class BookingService {
 
   async list(params: { booking_status?: string; page?: number; limit?: number } = {}): Promise<Booking[]> {
     try {
+      const queryParams = { limit: 100, ...params };
       const response = await this.axiosInstance.get<{ success: boolean; data: any }>(
         '/bookings',
-        { params }
+        { params: queryParams }
       );
       const data = response.data.data;
       return Array.isArray(data) ? data : data?.docs || [];
@@ -362,6 +363,21 @@ class BookingService {
       return response.data.data;
     } catch (error) {
       console.error('Error getting recommendation in Mobile:', error);
+      throw error;
+    }
+  }
+
+  async getAvailableSlots(branchId: string, date: string): Promise<any[]> {
+    try {
+      const response = await this.axiosInstance.get<{ success: boolean; data: any }>(
+        `/bookings/branches/${branchId}/available-slots`,
+        {
+          params: { date },
+        }
+      );
+      return response.data.data ?? response.data;
+    } catch (error) {
+      console.error('Error getting available slots in Mobile:', error);
       throw error;
     }
   }

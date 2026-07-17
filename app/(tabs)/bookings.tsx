@@ -546,6 +546,11 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
 
+  // Available Slots state
+  const [apiSlots, setApiSlots] = useState<{ timeStr: string; available_bays: number }[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [lastFetchedDate, setLastFetchedDate] = useState<string>('');
+
   // AI Recommendation values
   const [recommendation, setRecommendation] = useState<any>(null);
   const [loadingRecommendation, setLoadingRecommendation] = useState(false);
@@ -583,40 +588,57 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
     return { dayName, dateStr, fullDateStr };
   };
 
-  // Time slots generation
-  const availableSlots = useMemo(() => {
-    if (!selectedDate) return [];
-    
-    const slots = [];
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    
-    // Minimum advance booking is 60 minutes
-    const minTime = new Date(now.getTime() + 60 * 60 * 1000);
-
-    const [year, month, day] = selectedDate.split('-').map(Number);
-
-    for (let hour = 7; hour < 19; hour++) {
-      const hStr = String(hour).padStart(2, '0');
-      
-      // :00 slot
-      const slot00 = `${hStr}:00`;
-      const time00 = new Date(year, month - 1, day, hour, 0, 0, 0);
-      if (selectedDate !== todayStr || time00 >= minTime) {
-        slots.push(slot00);
-      }
-
-      // :30 slot
-      if (hour < 18 || (hour === 18)) {
-        const slot30 = `${hStr}:30`;
-        const time30 = new Date(year, month - 1, day, hour, 30, 0, 0);
-        if (selectedDate !== todayStr || time30 >= minTime) {
-          slots.push(slot30);
-        }
-      }
+  // Fetch available slots from backend
+  useEffect(() => {
+    let active = true;
+    if (!selectedBranchId || !selectedDate) {
+      setApiSlots([]);
+      setLastFetchedDate('');
+      return;
     }
-    return slots;
-  }, [selectedDate]);
+    const fetchSlots = async () => {
+      setLoadingSlots(true);
+      try {
+        const res = await bookingService.getAvailableSlots(selectedBranchId, selectedDate);
+        if (!active) return;
+
+        const mapped = res.map((slot: any) => {
+          const d = new Date(slot.scheduled_at);
+          const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+          return { timeStr, available_bays: slot.available_bays };
+        });
+        setApiSlots(mapped);
+        setLastFetchedDate(selectedDate);
+      } catch (err) {
+        console.error("Lỗi khi lấy danh sách slot trống trong Mobile:", err);
+      } finally {
+        if (active) setLoadingSlots(false);
+      }
+    };
+    fetchSlots();
+    return () => {
+      active = false;
+    };
+  }, [selectedBranchId, selectedDate]);
+
+  // Adjust selectedTime if it is no longer valid in fetched slots
+  useEffect(() => {
+    if (selectedDate !== lastFetchedDate) return;
+
+    if (apiSlots.length > 0 && selectedDate) {
+      const isValid = apiSlots.some(s => s.timeStr === selectedTime);
+      if (!isValid) {
+        setSelectedTime(apiSlots[0].timeStr);
+      }
+    } else if (apiSlots.length === 0 && selectedDate) {
+      setSelectedTime('');
+    }
+  }, [apiSlots, selectedDate, selectedTime, lastFetchedDate]);
+
+  // Derived available slots
+  const availableSlots = useMemo(() => {
+    return apiSlots.map(s => s.timeStr);
+  }, [apiSlots]);
 
   // Load backend form selections on open
   useEffect(() => {
@@ -1172,15 +1194,29 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
 
                     <Text style={styles.datePickerLabel}>Chọn khung giờ:</Text>
                     <View style={styles.timeSlotsGrid}>
-                      {availableSlots.length > 0 ? (
+                      {loadingSlots ? (
+                        <View style={{ flex: 1, paddingVertical: 20, alignItems: 'center', justifyContent: 'center' }}>
+                          <ActivityIndicator size="small" color="#06B6D4" />
+                          <Text style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>Đang tải khung giờ...</Text>
+                        </View>
+                      ) : availableSlots.length > 0 ? (
                         availableSlots.map((slot) => {
                           const isSelected = selectedTime === slot;
+                          const apiSlot = apiSlots.find(s => s.timeStr === slot);
+                          const bays = apiSlot?.available_bays ?? 0;
                           return (
                             <Pressable
                               key={slot}
                               onPress={() => setSelectedTime(slot)}
-                              style={[styles.timeSlotChip, isSelected && styles.timeSlotChipActive]}>
+                              style={[
+                                styles.timeSlotChip,
+                                isSelected && styles.timeSlotChipActive,
+                                { paddingVertical: 6 }
+                              ]}>
                               <Text style={[styles.timeSlotText, isSelected && styles.timeSlotTextActive]}>{slot}</Text>
+                              <Text style={{ fontSize: 9, color: isSelected ? '#0D9488' : '#94A3B8', marginTop: 2 }}>
+                                Còn {bays} chỗ
+                              </Text>
                             </Pressable>
                           );
                         })
@@ -1191,7 +1227,41 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
 
                     <View style={styles.hintContainer}>
                       <Text style={styles.hintText}>
-                        💡 Giờ hoạt động từ 07:00 đến 19:00. Đặt trước ít nhất 60 phút và trong vòng 7 ngày.
+                        {(() => {
+                          let openStr = '07:00';
+                          let closeStr = '18:30';
+                          
+                          if (selectedBranch?.operating_time) {
+                            const dayOfWeek = selectedDate ? new Date(selectedDate).getDay() : new Date().getDay();
+                            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                            
+                            const branchOpen = (isWeekend && selectedBranch.operating_time.weekend_open)
+                              ? selectedBranch.operating_time.weekend_open
+                              : selectedBranch.operating_time.default_open;
+                            const branchClose = (isWeekend && selectedBranch.operating_time.weekend_close)
+                              ? selectedBranch.operating_time.weekend_close
+                              : selectedBranch.operating_time.default_close;
+                              
+                            if (branchOpen && branchClose) {
+                              openStr = branchOpen;
+                              const closeParts = branchClose.split(':');
+                              if (closeParts.length === 2) {
+                                let h = parseInt(closeParts[0], 10);
+                                let m = parseInt(closeParts[1], 10);
+                                if (m >= 30) {
+                                  m -= 30;
+                                } else {
+                                  h -= 1;
+                                  m += 30;
+                                }
+                                closeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                              } else {
+                                closeStr = branchClose;
+                              }
+                            }
+                          }
+                          return `💡 Khung giờ hoạt động từ ${openStr} đến ${selectedBranch?.operating_time?.default_close || '19:00'} (Đặt trước ít nhất 60 phút - Khung giờ cuối cùng: ${closeStr})`;
+                        })()}
                       </Text>
                     </View>
                   </View>
@@ -1915,20 +1985,19 @@ const styles = StyleSheet.create({
   },
 
   actionBtn: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 10,
     borderWidth: 1,
   },
 
   cancelBtn: {
-    backgroundColor: 'rgba(239,68,68,0.04)',
-    borderColor: 'rgba(239,68,68,0.12)',
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FEE2E2',
   },
 
   cancelBtnText: {
