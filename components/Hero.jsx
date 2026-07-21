@@ -21,18 +21,18 @@ const formatNumber = (num) => {
 };
 
 export default function Hero() {
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const isSmall = screenWidth < 375;
 
-  const wordFontSize = isSmall ? 38 : 50;
-  const wordLineHeight = isSmall ? 44 : 58;
-  const statValSize = isSmall ? 26 : 34;
+  const wordFontSize = isSmall ? 36 : Math.min(Math.round(screenWidth * 0.1), 44);
+  const wordLineHeight = isSmall ? 42 : Math.min(Math.round(screenWidth * 0.11), 48);
+  const statValSize = isSmall ? 22 : 28;
   const statLabelSize = isSmall ? 10 : 11;
-  const descFontSize = isSmall ? 12 : 13;
+  const descFontSize = isSmall ? 11 : 12;
 
-  const topWordTopRight = isSmall ? 110 : 140;
-  const descTop = isSmall ? 190 : 250;
-  const bottomWordLeft = isSmall ? 280 : 330;
+  const topWordTopRight = isSmall ? 85 : 105;
+  const descTop = isSmall ? 155 : 185;
+  const bottomWordLeft = isSmall ? 240 : 280;
 
   const [stats, setStats] = useState({ customers: 0, bookings: 0, branches: 0 });
   const player = useVideoPlayer(VIDEO_URI, (p) => {
@@ -56,7 +56,7 @@ export default function Hero() {
   }, []);
 
   return (
-    <View style={styles.hero}>
+    <View style={[styles.hero, { height: Math.max(Math.round(screenHeight * 0.72), 620) }]}>
       <VideoView
         player={player}
         style={styles.video}
@@ -82,7 +82,7 @@ export default function Hero() {
         <View style={styles.stage}>
           <Text style={[styles.heroWord, styles.wordTopLeft, { fontSize: wordFontSize, lineHeight: wordLineHeight }]}>RỬA XE</Text>
           <Text style={[styles.heroWord, styles.wordTopRight, { fontSize: wordFontSize, lineHeight: wordLineHeight, top: topWordTopRight }]}>TÍCH ĐIỂM</Text>
-          <Text style={[styles.heroWord, styles.wordBottomLeft, { fontSize: wordFontSize, lineHeight: wordLineHeight, top: bottomWordLeft }]}>NHẬN ƯU ĐÃI</Text>
+          <Text style={[styles.heroWord, styles.wordBottomLeft, { fontSize: wordFontSize, lineHeight: wordLineHeight, top: bottomWordLeft, maxWidth: screenWidth * 0.75 }]}>NHẬN ƯU ĐÃI</Text>
 
           <View style={[styles.descriptionWrap, { top: descTop }]}>
             <Text style={[styles.description, { fontSize: descFontSize }]}>
@@ -186,30 +186,26 @@ const styles = StyleSheet.create({
   },
   wordTopLeft: {
     top: 0,
-    left: -2,
+    left: 0,
     maxWidth: 210,
   },
   wordTopRight: {
-    top: 140,
-    right: -4,
+    right: 0,
     maxWidth: 270,
     textAlign: 'right',
   },
   wordBottomLeft: {
-    top: 330,
-    left: 12,
-    maxWidth: 330,
+    left: 0,
   },
   descriptionWrap: {
     position: 'absolute',
     left: 0,
-    top: 250,
     maxWidth: 230,
   },
   description: {
     color: '#F3F5F7',
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12,
+    lineHeight: 18,
     textShadowColor: 'rgba(17, 17, 17, 0.72)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
@@ -219,18 +215,18 @@ const styles = StyleSheet.create({
     maxWidth: 165,
   },
   statTopRight: {
-    top: 6,
-    right: 6,
+    top: 0,
+    right: 0,
     alignItems: 'flex-end',
   },
   statBottomLeft: {
-    bottom: 18,
-    left: 8,
+    bottom: 10,
+    left: 0,
     alignItems: 'flex-start',
   },
   statBottomRight: {
-    bottom: 18,
-    right: 8,
+    bottom: 10,
+    right: 0,
     alignItems: 'flex-end',
   },
   statLine: {
