@@ -438,18 +438,21 @@ export default function HistoryScreen() {
         </View>
 
         <View style={styles.historyFooter}>
-          {finalPrice < basePrice ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={[styles.priceText, { textDecorationLine: 'line-through', fontSize: 13, color: '#94A3B8' }]}>
-                {basePrice.toLocaleString('vi-VN')} đ
-              </Text>
-              <Text style={styles.priceText}>
-                {finalPrice.toLocaleString('vi-VN')} đ
-              </Text>
-            </View>
-          ) : (
-            <Text style={styles.priceText}>{finalPrice.toLocaleString('vi-VN')} đ</Text>
-          )}
+          <View style={{ flexShrink: 1, marginRight: 4 }}>
+            {finalPrice < basePrice ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <Text style={[styles.priceText, { textDecorationLine: 'line-through', fontSize: 12, color: '#94A3B8' }]}>
+                  {basePrice.toLocaleString('vi-VN')} đ
+                </Text>
+                <Text style={styles.priceText}>
+                  {finalPrice.toLocaleString('vi-VN')} đ
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.priceText}>{finalPrice.toLocaleString('vi-VN')} đ</Text>
+            )}
+          </View>
+
           <View style={styles.actionButtons}>
             <Pressable style={styles.detailButton} onPress={() => setDetailModal(item)}>
               <Text style={styles.detailButtonText}>Chi tiết</Text>
@@ -464,7 +467,7 @@ export default function HistoryScreen() {
                 style={styles.reportButton}
                 onPress={() => handleOpenCreateReport(item)}
               >
-                <MaterialCommunityIcons name="message-alert-outline" size={14} color="#D97706" />
+                <MaterialCommunityIcons name="message-alert-outline" size={13} color="#D97706" />
                 <Text style={styles.reportButtonText}>Khiếu nại</Text>
               </Pressable>
             )}
@@ -473,7 +476,7 @@ export default function HistoryScreen() {
                 style={styles.viewReportButton}
                 onPress={() => setViewReportModal({ isOpen: true, booking: item })}
               >
-                <MaterialCommunityIcons name="message-text-outline" size={14} color="#4F46E5" />
+                <MaterialCommunityIcons name="message-text-outline" size={13} color="#4F46E5" />
                 <Text style={styles.viewReportButtonText}>Xem khiếu nại</Text>
               </Pressable>
             )}
@@ -1391,42 +1394,47 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
-    paddingTop: 12,
+    paddingTop: 10,
   },
   priceText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: '#06B6D4',
   },
   actionButtons: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'flex-end',
   },
   detailButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#06B6D4',
     backgroundColor: '#FFFFFF',
   },
   detailButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: '#06B6D4',
   },
   cancelButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#FCA5A5',
     backgroundColor: '#FEF2F2',
   },
   cancelButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: '#EF4444',
   },
@@ -1688,34 +1696,34 @@ const styles = StyleSheet.create({
   },
   // Report styles
   reportButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#F59E0B',
     backgroundColor: '#FFFBEB',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
   },
   reportButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: '#D97706',
   },
   viewReportButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#818CF8',
     backgroundColor: '#EEF2FF',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
   },
   viewReportButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: '#4F46E5',
   },
