@@ -8,12 +8,40 @@ const API_TIMEOUT = API_CONFIG.API_TIMEOUT;
 const ACCESS_TOKEN_KEY = '@auth_access_token';
 const REFRESH_TOKEN_KEY = '@auth_refresh_token';
 
+export interface BookingReport {
+  title: string;
+  fullname: string;
+  description: string;
+  evidence: string[];
+  phone: string;
+  email: string;
+  isConfirm: boolean;
+  status?: 'accepted' | 'rejected' | 'pending';
+  reject_reason?: string;
+  reject_details?: {
+    reason?: string;
+    admin_signature?: string;
+    customer_signature?: string;
+  };
+  compensation?: {
+    branch_info?: string;
+    customer_info?: any;
+    compensation_amount?: number;
+    transfer_image?: string;
+    qr_image?: string;
+    admin_signature?: string;
+    customer_signature?: string;
+    customer_signature_confirm?: string;
+    created_at?: string;
+  };
+}
+
 export interface Booking {
   _id: string;
   id?: string;
   customer_id?: any;
   appointment_code: string;
-  booking_status: 'pending' | 'confirmed' | 'checked_in' | 'in_progress' | 'washed' | 'completed' | 'cancelled';
+  booking_status: 'pending' | 'confirmed' | 'checked_in' | 'in_progress' | 'washed' | 'completed' | 'cancelled' | 'compensated';
   booking_source: 'app' | 'web' | 'walk_in';
   scheduled_at: string;
   checkedin_at?: string | null;
@@ -21,6 +49,8 @@ export interface Booking {
   completed_at?: string | null;
   cancelled_at?: string | null;
   cancellation_reason?: string | null;
+  payment_method?: string | null;
+  report?: BookingReport | null;
   branch?: {
     _id: string;
     branch_phone?: string;
@@ -437,6 +467,77 @@ class BookingService {
       return response.data;
     } catch (error) {
       console.error('Error creating checklist in Mobile:', error);
+      throw error;
+    }
+  }
+
+  async createReport(appointmentId: string, payload: {
+    title: string;
+    fullname: string;
+    description: string;
+    phone?: string;
+    email?: string;
+    evidenceImages?: string[];
+  }): Promise<any> {
+    try {
+      const formData = new FormData();
+      formData.append('title', payload.title);
+      formData.append('fullname', payload.fullname);
+      formData.append('description', payload.description);
+      if (payload.phone) formData.append('phone', payload.phone);
+      if (payload.email) formData.append('email', payload.email);
+
+      if (payload.evidenceImages && payload.evidenceImages.length > 0) {
+        payload.evidenceImages.forEach((uri, index) => {
+          const uriParts = uri.split('.');
+          const fileExt = uriParts[uriParts.length - 1] || 'jpg';
+          const mimeType = fileExt === 'jpg' || fileExt === 'jpeg' ? 'image/jpeg' : `image/${fileExt}`;
+          formData.append('evidence', {
+            uri,
+            type: mimeType,
+            name: `evidence_${index}.${fileExt}`,
+          } as any);
+        });
+      }
+
+      const response = await this.axiosInstance.post<any>(
+        `/booking-checklists/appointment/${appointmentId}/report`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error creating report in Mobile:', error);
+      throw error;
+    }
+  }
+
+  async uploadCompensationQr(appointmentId: string, qrImageBase64: string): Promise<any> {
+    try {
+      const response = await this.axiosInstance.patch<any>(
+        `/booking-checklists/appointment/${appointmentId}/report/upload-qr`,
+        { qr_image: qrImageBase64 }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error uploading compensation QR in Mobile:', error);
+      throw error;
+    }
+  }
+
+  async customerConfirmCompensation(appointmentId: string, signatureBase64: string): Promise<any> {
+    try {
+      const response = await this.axiosInstance.patch<any>(
+        `/booking-checklists/appointment/${appointmentId}/report/customer-confirm`,
+        { customer_signature_confirm: signatureBase64 }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error confirming compensation in Mobile:', error);
       throw error;
     }
   }
