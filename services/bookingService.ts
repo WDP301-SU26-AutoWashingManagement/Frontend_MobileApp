@@ -41,7 +41,7 @@ export interface Booking {
   id?: string;
   customer_id?: any;
   appointment_code: string;
-  booking_status: 'pending' | 'confirmed' | 'checked_in' | 'in_progress' | 'washed' | 'completed' | 'cancelled' | 'compensated';
+  booking_status: 'pending' | 'confirmed' | 'arrived' | 'checked_in' | 'in_progress' | 'washed' | 'completed' | 'cancelled' | 'compensated';
   booking_source: 'app' | 'web' | 'walk_in';
   scheduled_at: string;
   checkedin_at?: string | null;
@@ -89,6 +89,7 @@ export interface Booking {
     _id: string;
     price_snapshot: number;
     duration_snapshot: number;
+    is_completed?: boolean;
     service?: {
       _id: string;
       service_name: string;
@@ -539,6 +540,39 @@ class BookingService {
     } catch (error) {
       console.error('Error confirming compensation in Mobile:', error);
       throw error;
+    }
+  }
+
+  async toggleServiceItem(bookingId: string, itemId: string): Promise<any> {
+    try {
+      const response = await this.axiosInstance.patch<{ success: boolean; data: any }>(
+        `/bookings/${bookingId}/items/${itemId}/toggle`
+      );
+      return response.data.data;
+    } catch (error: any) {
+      console.error(`Error toggling service item ${itemId} in Mobile:`, error);
+      throw new Error(error.response?.data?.message || 'Không thể cập nhật trạng thái dịch vụ');
+    }
+  }
+
+  async updateHandoverSignature(checklistId: string, signatureBase64: string): Promise<any> {
+    try {
+      const formData = new FormData();
+      formData.append('customer_signature_after', signatureBase64);
+
+      const response = await this.axiosInstance.put<{ success: boolean; data: any }>(
+        `/booking-checklists/${checklistId}`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Error updating handover signature in Mobile:', error);
+      throw new Error(error.response?.data?.message || 'Không thể lưu chữ ký bàn giao xe');
     }
   }
 

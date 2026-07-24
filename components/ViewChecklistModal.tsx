@@ -100,20 +100,48 @@ export default function ViewChecklistModal({ checklist, isOpen, onClose }: ViewC
               </View>
             )}
 
-            {checklist.customer_signature && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>
-                  <Ionicons name="pencil-outline" size={16} color="#6366F1" /> Chữ ký khách hàng
-                </Text>
-                <View style={styles.signatureContainer}>
-                  <Image 
-                    source={{ uri: checklist.customer_signature }} 
-                    style={styles.signatureImage} 
-                    resizeMode="contain" 
-                  />
-                </View>
+            {/* Chữ ký xác nhận đồng kiểm (Hiển thị cả 2 chữ ký Ban đầu & Sau khi rửa) */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                <Ionicons name="pencil-outline" size={16} color="#6366F1" /> Chữ ký xác nhận đồng kiểm
+              </Text>
+
+              {/* 1. Chữ ký lúc nhận xe */}
+              <View style={styles.signatureBoxContainer}>
+                <Text style={styles.signatureLabelText}>1. Chữ ký lúc nhận xe (Ban đầu)</Text>
+                {checklist.customer_signature ? (
+                  <View style={styles.signatureContainer}>
+                    <Image
+                      source={{ uri: checklist.customer_signature }}
+                      style={styles.signatureImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.signatureEmptyBox}>
+                    <Text style={styles.signatureEmptyText}>Chưa có chữ ký ban đầu</Text>
+                  </View>
+                )}
               </View>
-            )}
+
+              {/* 2. Chữ ký bàn giao xe (Sau khi rửa) */}
+              <View style={[styles.signatureBoxContainer, { marginTop: 12 }]}>
+                <Text style={styles.signatureLabelText}>2. Chữ ký bàn giao xe (Sau khi rửa)</Text>
+                {checklist.customer_signature_after ? (
+                  <View style={styles.signatureContainer}>
+                    <Image
+                      source={{ uri: checklist.customer_signature_after }}
+                      style={styles.signatureImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.signatureEmptyBox}>
+                    <Text style={styles.signatureEmptyText}>Chưa ký bàn giao xe</Text>
+                  </View>
+                )}
+              </View>
+            </View>
             
             <View style={{ height: 40 }} />
           </ScrollView>
@@ -216,15 +244,42 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-  signatureContainer: {
-    height: 150,
+  signatureBoxContainer: {
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderRadius: 12,
+    padding: 12,
+  },
+  signatureLabelText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 8,
+  },
+  signatureContainer: {
+    height: 150,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 10,
+  },
+  signatureEmptyBox: {
+    height: 100,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  signatureEmptyText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontStyle: 'italic',
   },
   signatureImage: {
     width: '100%',
