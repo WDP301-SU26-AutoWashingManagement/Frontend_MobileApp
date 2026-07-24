@@ -19,6 +19,8 @@ import {
 import CreateChecklistModal from '../../components/CreateChecklistModal';
 import ViewChecklistModal from '../../components/ViewChecklistModal';
 import PaymentModal from '../../components/PaymentModal';
+import TickServicesModal from '../../components/TickServicesModal';
+import ConfirmHandoverModal from '../../components/ConfirmHandoverModal';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -46,6 +48,8 @@ const getStatusStyles = (status: Booking['booking_status'] | 'washed') => {
       return { text: AMBER, bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.18)' };
     case 'confirmed':
       return { text: '#2563EB', bg: 'rgba(39,130,246,0.08)', border: 'rgba(39,130,246,0.18)' };
+    case 'arrived':
+      return { text: '#0284C7', bg: 'rgba(2,132,199,0.08)', border: 'rgba(2,132,199,0.18)' };
     case 'checked_in':
       return { text: PURPLE, bg: 'rgba(139,92,246,0.08)', border: 'rgba(139,92,246,0.18)' };
     case 'in_progress':
@@ -56,6 +60,8 @@ const getStatusStyles = (status: Booking['booking_status'] | 'washed') => {
       return { text: GREEN, bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.18)' };
     case 'cancelled':
       return { text: ROSE, bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.18)' };
+    case 'compensated':
+      return { text: '#B45309', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.18)' };
     default:
       return { text: '#4B5563', bg: 'rgba(107,114,128,0.08)', border: 'rgba(107,114,128,0.18)' };
   }
@@ -67,6 +73,8 @@ const getStatusLabel = (status: any) => {
       return 'Chờ xác nhận';
     case 'confirmed':
       return 'Đã xác nhận';
+    case 'arrived':
+      return 'Xe đã tới';
     case 'checked_in':
       return 'Đã check-in';
     case 'in_progress':
@@ -77,12 +85,14 @@ const getStatusLabel = (status: any) => {
       return 'Hoàn thành';
     case 'cancelled':
       return 'Đã hủy';
+    case 'compensated':
+      return 'Đã đền bù';
     default:
       return status;
   }
 };
 
-type TabType = 'pending' | 'active' | 'completed' | 'cancelled';
+type TabType = 'pending' | 'active' | 'completed' | 'compensated' | 'cancelled';
 
 export default function StaffBookingsScreen() {
   const router = useRouter();
@@ -90,17 +100,21 @@ export default function StaffBookingsScreen() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('pending');
-  const [activeSubFilter, setActiveSubFilter] = useState<'all' | 'confirmed' | 'checked_in' | 'in_progress' | 'washed'>('all');
+  const [activeSubFilter, setActiveSubFilter] = useState<'all' | 'confirmed' | 'arrived' | 'checked_in' | 'in_progress' | 'washed'>('all');
   const [showSubFilterDropdown, setShowSubFilterDropdown] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [createChecklistBooking, setCreateChecklistBooking] = useState<Booking | null>(null);
   const [viewChecklistBooking, setViewChecklistBooking] = useState<Booking | null>(null);
+  const [tickServicesModalBooking, setTickServicesModalBooking] = useState<Booking | null>(null);
   const [checklist, setChecklist] = useState<any | null>(null);
   const [loadingChecklist, setLoadingChecklist] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [paymentModal, setPaymentModal] = useState<{ isOpen: boolean, booking: Booking | null }>({ isOpen: false, booking: null });
   const [missingChecklistIds, setMissingChecklistIds] = useState<Set<string>>(new Set());
   const [loadingChecklists, setLoadingChecklists] = useState<Set<string>>(new Set());
+  const [signedHandoverIds, setSignedHandoverIds] = useState<Set<string>>(new Set());
+  const [loadingHandovers, setLoadingHandovers] = useState<Set<string>>(new Set());
+  const [confirmHandoverBooking, setConfirmHandoverBooking] = useState<Booking | null>(null);
   const [checkinMethodBooking, setCheckinMethodBooking] = useState<Booking | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [checkinFailureModal, setCheckinFailureModal] = useState<{
@@ -123,8 +137,8 @@ export default function StaffBookingsScreen() {
       });
       setBookings(sorted);
 
-      // Check checklist status for 'confirmed' bookings
-      const confirmed = sorted.filter((b) => b.booking_status === 'confirmed');
+      // Check checklist status for 'confirmed' or 'arrived' bookings
+      const confirmed = sorted.filter((b) => b.booking_status === 'confirmed' || b.booking_status === 'arrived');
       if (confirmed.length > 0) {
         const confirmedIds = confirmed.map((b) => b._id);
         setLoadingChecklists(new Set(confirmedIds));
@@ -151,6 +165,40 @@ export default function StaffBookingsScreen() {
         });
 
         setLoadingChecklists((prev) => {
+          const newSet = new Set(prev);
+          results.forEach((r) => newSet.delete(r.id));
+          return newSet;
+        });
+      }
+
+      // Check handover signature status for 'washed' bookings
+      const washed = sorted.filter((b) => (b.booking_status as string) === 'washed');
+      if (washed.length > 0) {
+        const washedIds = washed.map((b) => b._id);
+        setLoadingHandovers(new Set(washedIds));
+
+        const results = await Promise.all(
+          washed.map(async (b) => {
+            const id = b._id;
+            try {
+              const data = await bookingService.getChecklist(id);
+              return { id, hasSigned: !!data?.customer_signature_after };
+            } catch (err) {
+              return { id, hasSigned: false };
+            }
+          })
+        );
+
+        setSignedHandoverIds((prev) => {
+          const newSet = new Set(prev);
+          results.forEach((r) => {
+            if (r.hasSigned) newSet.add(r.id);
+            else newSet.delete(r.id);
+          });
+          return newSet;
+        });
+
+        setLoadingHandovers((prev) => {
           const newSet = new Set(prev);
           results.forEach((r) => newSet.delete(r.id));
           return newSet;
@@ -399,12 +447,14 @@ export default function StaffBookingsScreen() {
     if (activeTab === 'pending') {
       return status === 'pending';
     } else if (activeTab === 'active') {
-      const isStatusActive = status === 'confirmed' || status === 'checked_in' || status === 'in_progress' || (status as string) === 'washed';
+      const isStatusActive = status === 'confirmed' || status === 'arrived' || status === 'checked_in' || status === 'in_progress' || (status as string) === 'washed';
       if (!isStatusActive) return false;
       if (activeSubFilter === 'all') return true;
       return status === activeSubFilter;
     } else if (activeTab === 'completed') {
       return status === 'completed';
+    } else if (activeTab === 'compensated') {
+      return status === 'compensated';
     } else if (activeTab === 'cancelled') {
       return status === 'cancelled';
     }
@@ -473,7 +523,7 @@ export default function StaffBookingsScreen() {
             <Text style={styles.actionBtnText}>Xác nhận</Text>
           </Pressable>
         );
-      } else if (status === 'confirmed') {
+      } else if (status === 'confirmed' || status === 'arrived') {
         if (loadingChecklists.has(item._id)) {
           return (
             <View style={[styles.actionBtn, { backgroundColor: '#94A3B8' }]}>
@@ -494,10 +544,10 @@ export default function StaffBookingsScreen() {
         }
         return (
           <Pressable
-            style={[styles.actionBtn, { backgroundColor: CYAN }]}
-            onPress={() => setCheckinMethodBooking(item)}>
-            <MaterialCommunityIcons name="qrcode-scan" size={16} color="#FFFFFF" />
-            <Text style={styles.actionBtnText}>Check-in</Text>
+            style={[styles.actionBtn, { backgroundColor: '#0284C7' }]}
+            onPress={() => setTickServicesModalBooking(item)}>
+            <MaterialCommunityIcons name="format-list-checks" size={16} color="#FFFFFF" />
+            <Text style={styles.actionBtnText}>Cập nhật DV</Text>
           </Pressable>
         );
       } else if (status === 'checked_in') {
@@ -519,6 +569,37 @@ export default function StaffBookingsScreen() {
           </Pressable>
         );
       } else if ((status as string) === 'washed') {
+        const report = (item as any).report;
+        if (report && report.status !== 'rejected') {
+          return (
+            <View style={[styles.actionBtn, { backgroundColor: '#94A3B8' }]}>
+              <MaterialCommunityIcons name="alert-circle-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.actionBtnText}>Xử lý khiếu nại</Text>
+            </View>
+          );
+        }
+
+        if (loadingHandovers.has(item._id)) {
+          return (
+            <View style={[styles.actionBtn, { backgroundColor: '#94A3B8' }]}>
+              <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 4 }} />
+              <Text style={styles.actionBtnText}>Đang tải...</Text>
+            </View>
+          );
+        }
+
+        const hasSigned = signedHandoverIds.has(item._id);
+        if (!hasSigned) {
+          return (
+            <Pressable
+              style={[styles.actionBtn, { backgroundColor: '#4F46E5' }]}
+              onPress={() => setConfirmHandoverBooking(item)}>
+              <MaterialCommunityIcons name="pencil-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.actionBtnText}>Ký nhận xe</Text>
+            </Pressable>
+          );
+        }
+
         return (
           <Pressable
             style={[styles.actionBtn, { backgroundColor: GREEN }]}
@@ -642,6 +723,7 @@ export default function StaffBookingsScreen() {
     { key: 'pending', label: 'Chờ duyệt', icon: 'clipboard-alert-outline' },
     { key: 'active', label: 'Đang làm', icon: 'progress-wrench' },
     { key: 'completed', label: 'Đã xong', icon: 'checkbox-marked-circle-outline' },
+    { key: 'compensated', label: 'Đã đền bù', icon: 'shield-check-outline' },
     { key: 'cancelled', label: 'Đã hủy', icon: 'close-circle-outline' },
   ];
 
@@ -700,9 +782,10 @@ export default function StaffBookingsScreen() {
                 {
                   activeSubFilter === 'all' ? 'Tất cả' :
                     activeSubFilter === 'confirmed' ? 'Đã xác nhận' :
-                      activeSubFilter === 'checked_in' ? 'Đã nhận xe' :
-                        activeSubFilter === 'in_progress' ? 'Đang rửa' :
-                          'Rửa xong'
+                      activeSubFilter === 'arrived' ? 'Xe đã tới' :
+                        activeSubFilter === 'checked_in' ? 'Đã nhận xe' :
+                          activeSubFilter === 'in_progress' ? 'Đang rửa' :
+                            'Rửa xong'
                 }
               </Text>
             </Text>
@@ -716,6 +799,7 @@ export default function StaffBookingsScreen() {
                 {[
                   { key: 'all', label: 'Tất cả' },
                   { key: 'confirmed', label: 'Đã xác nhận' },
+                  { key: 'arrived', label: 'Xe đã tới' },
                   { key: 'checked_in', label: 'Đã nhận xe' },
                   { key: 'in_progress', label: 'Đang rửa' },
                   { key: 'washed', label: 'Rửa xong' },
@@ -880,14 +964,20 @@ export default function StaffBookingsScreen() {
                     <Text style={styles.modalSectionTitle}>Dịch vụ & Thanh toán</Text>
                     <View style={styles.infoCard}>
                       {(() => {
-                        const combos: Record<string, { name: string, price: number, items: string[] }> = {};
-                        const individuals: Array<{ name: string, price: number }> = [];
+                        const combos: Record<string, { name: string, price: number, items: Array<{ name: string, isCompleted: boolean }> }> = {};
+                        const individuals: Array<{ name: string, price: number, isCompleted: boolean }> = [];
+                        const servicesList = selectedBooking.services || [];
+                        const totalCount = servicesList.length;
+                        const completedCount = servicesList.filter(s => !!s.is_completed).length;
 
-                        selectedBooking.services.forEach(svc => {
+                        servicesList.forEach(svc => {
                           const pkg = svc.service_package_id || svc.service_package;
                           const service = svc.service_id || svc.service;
+                          const isDone = !!svc.is_completed;
+                          const sName = service?.service_name || 'Dịch vụ';
+
                           if (pkg) {
-                            const pkgId = pkg._id;
+                            const pkgId = pkg._id || (pkg as any).id || 'combo';
                             if (!combos[pkgId]) {
                               combos[pkgId] = {
                                 name: pkg.package_name || pkg.name || pkg.service_name || 'Combo',
@@ -896,23 +986,33 @@ export default function StaffBookingsScreen() {
                               };
                             }
                             combos[pkgId].price += svc.price_snapshot;
-                            combos[pkgId].items.push(service?.service_name || 'Dịch vụ');
+                            combos[pkgId].items.push({ name: sName, isCompleted: isDone });
                           } else {
                             individuals.push({
-                              name: service?.service_name || 'Dịch vụ',
-                              price: svc.price_snapshot
+                              name: sName,
+                              price: svc.price_snapshot,
+                              isCompleted: isDone
                             });
                           }
                         });
 
                         return (
                           <View style={{ width: '100%', gap: 10 }}>
-                            <Text style={[styles.infoLabel, { fontSize: 13, marginBottom: 4 }]}>Chi tiết dịch vụ:</Text>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                              <Text style={[styles.infoLabel, { fontSize: 13 }]}>Chi tiết dịch vụ:</Text>
+                              {totalCount > 0 && (
+                                <View style={{ backgroundColor: completedCount === totalCount ? '#ECFDF5' : '#F0F9FF', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, borderWidth: 1, borderColor: completedCount === totalCount ? '#A7F3D0' : '#BAE6FD' }}>
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: completedCount === totalCount ? '#047857' : '#0284C7' }}>
+                                    {completedCount === totalCount ? '✓ Hoàn thành tất cả' : `Tiến độ: ${completedCount}/${totalCount}`}
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
 
                             {/* Render Combos */}
                             {Object.values(combos).map((combo, idx) => (
-                              <View key={`combo-${idx}`} style={{ width: '100%', marginBottom: 8 }}>
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
+                              <View key={`combo-${idx}`} style={{ width: '100%', marginBottom: 8, backgroundColor: '#F8FAFC', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#F1F5F9' }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%', marginBottom: 4 }}>
                                   <Text style={{ fontSize: 13, fontWeight: '700', color: '#0891B2', flex: 1, paddingRight: 8 }}>
                                     {combo.name}
                                   </Text>
@@ -921,22 +1021,46 @@ export default function StaffBookingsScreen() {
                                   </Text>
                                 </View>
                                 {combo.items.map((subItem, sIdx) => (
-                                  <Text key={`sub-${sIdx}`} style={{ fontSize: 12, color: GRAY, marginLeft: 12, marginTop: 2 }}>
-                                    • {subItem}
-                                  </Text>
+                                  <View key={`sub-${sIdx}`} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginLeft: 8, marginTop: 4 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 }}>
+                                      <MaterialCommunityIcons
+                                        name={subItem.isCompleted ? "check-circle" : "clock-outline"}
+                                        size={14}
+                                        color={subItem.isCompleted ? "#10B981" : "#94A3B8"}
+                                      />
+                                      <Text style={{ fontSize: 12, color: subItem.isCompleted ? '#059669' : GRAY, fontWeight: subItem.isCompleted ? '600' : '400' }}>
+                                        {subItem.name}
+                                      </Text>
+                                    </View>
+                                    <Text style={{ fontSize: 11, fontWeight: '700', color: subItem.isCompleted ? '#047857' : '#D97706' }}>
+                                      {subItem.isCompleted ? '✓ Đã xong' : '⏳ Chưa xong'}
+                                    </Text>
+                                  </View>
                                 ))}
                               </View>
                             ))}
 
                             {/* Render Individuals */}
                             {individuals.map((ind, idx) => (
-                              <View key={`ind-${idx}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 4 }}>
-                                <Text style={{ fontSize: 13, fontWeight: '700', color: DARK, flex: 1, paddingRight: 8 }}>
-                                  {ind.name}
-                                </Text>
-                                <Text style={{ fontSize: 13, fontWeight: '600', color: DARK }}>
-                                  {ind.price.toLocaleString('vi-VN')} đ
-                                </Text>
+                              <View key={`ind-${idx}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 6, backgroundColor: ind.isCompleted ? '#F0FDF4' : '#F8FAFC', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: ind.isCompleted ? '#DCFCE7' : '#F1F5F9' }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                                  <MaterialCommunityIcons
+                                    name={ind.isCompleted ? "check-circle" : "clock-outline"}
+                                    size={16}
+                                    color={ind.isCompleted ? "#10B981" : "#94A3B8"}
+                                  />
+                                  <Text style={{ fontSize: 13, fontWeight: '700', color: ind.isCompleted ? '#047857' : DARK, flex: 1 }}>
+                                    {ind.name}
+                                  </Text>
+                                </View>
+                                <View style={{ alignItems: 'flex-end' }}>
+                                  <Text style={{ fontSize: 13, fontWeight: '600', color: DARK }}>
+                                    {ind.price.toLocaleString('vi-VN')} đ
+                                  </Text>
+                                  <Text style={{ fontSize: 10, fontWeight: '700', color: ind.isCompleted ? '#047857' : '#D97706', marginTop: 2 }}>
+                                    {ind.isCompleted ? '✓ Đã xong' : '⏳ Chưa xong'}
+                                  </Text>
+                                </View>
                               </View>
                             ))}
                           </View>
@@ -1045,6 +1169,16 @@ export default function StaffBookingsScreen() {
                     <ActivityIndicator size="small" color={CYAN} style={{ alignSelf: 'center', padding: 12 }} />
                   ) : (
                     <>
+                      {['confirmed', 'arrived'].includes(selectedBooking.booking_status as string) && (
+                        <Pressable
+                          style={[styles.modalActionBtn, { backgroundColor: '#0284C7', marginBottom: 8 }]}
+                          onPress={() => {
+                            setTickServicesModalBooking(selectedBooking);
+                            setSelectedBooking(null);
+                          }}>
+                          <Text style={styles.modalActionBtnText}>Cập nhật Dịch vụ Thủ công</Text>
+                        </Pressable>
+                      )}
                       {selectedBooking.booking_status === 'pending' && (
                         <Pressable style={styles.modalActionBtn} onPress={() => handleUpdateStatus(selectedBooking._id, 'confirm')}>
                           <Text style={styles.modalActionBtnText}>Xác nhận đơn hàng</Text>
@@ -1077,11 +1211,37 @@ export default function StaffBookingsScreen() {
                           <Text style={styles.modalActionBtnText}>Báo cáo Rửa xong</Text>
                         </Pressable>
                       )}
-                      {(selectedBooking.booking_status as string) === 'washed' && (
-                        <Pressable style={[styles.modalActionBtn, { backgroundColor: GREEN }]} onPress={() => { setSelectedBooking(null); setPaymentModal({ isOpen: true, booking: selectedBooking }); }}>
-                          <Text style={styles.modalActionBtnText}>Hoàn thành & Thu tiền</Text>
-                        </Pressable>
-                      )}
+                      {(selectedBooking.booking_status as string) === 'washed' && (() => {
+                        const report = (selectedBooking as any).report;
+                        if (report && report.status !== 'rejected') {
+                          return (
+                            <Pressable style={[styles.modalActionBtn, { backgroundColor: '#94A3B8' }]} disabled>
+                              <Text style={styles.modalActionBtnText}>⚠️ Xử lý khiếu nại (Chặn thanh toán)</Text>
+                            </Pressable>
+                          );
+                        }
+
+                        const hasSigned = signedHandoverIds.has(selectedBooking._id);
+                        if (!hasSigned) {
+                          return (
+                            <Pressable
+                              style={[styles.modalActionBtn, { backgroundColor: '#4F46E5' }]}
+                              onPress={() => {
+                                const b = selectedBooking;
+                                setSelectedBooking(null);
+                                setConfirmHandoverBooking(b);
+                              }}>
+                              <Text style={styles.modalActionBtnText}>Ký nhận bàn giao xe</Text>
+                            </Pressable>
+                          );
+                        }
+
+                        return (
+                          <Pressable style={[styles.modalActionBtn, { backgroundColor: GREEN }]} onPress={() => { setSelectedBooking(null); setPaymentModal({ isOpen: true, booking: selectedBooking }); }}>
+                            <Text style={styles.modalActionBtnText}>Hoàn thành & Thu tiền</Text>
+                          </Pressable>
+                        );
+                      })()}
                     </>
                   )}
                 </View>
@@ -1127,6 +1287,33 @@ export default function StaffBookingsScreen() {
           fetchBookings();
         }}
       />
+
+      {/* TICK MANUAL SERVICES MODAL FOR STAFF */}
+      {tickServicesModalBooking && (
+        <TickServicesModal
+          booking={tickServicesModalBooking}
+          visible={!!tickServicesModalBooking}
+          onClose={() => setTickServicesModalBooking(null)}
+          onSuccess={() => fetchBookings()}
+          onCheckin={() => {
+            const b = tickServicesModalBooking;
+            setTickServicesModalBooking(null);
+            if (b) setCheckinMethodBooking(b);
+          }}
+        />
+      )}
+
+      {/* CONFIRM HANDOVER SIGNATURE MODAL */}
+      {confirmHandoverBooking && (
+        <ConfirmHandoverModal
+          booking={confirmHandoverBooking}
+          visible={!!confirmHandoverBooking}
+          onClose={() => setConfirmHandoverBooking(null)}
+          onSuccess={() => {
+            fetchBookings();
+          }}
+        />
+      )}
 
       {/* CHỌN PHƯƠNG THỨC CHECK-IN MODAL */}
       {checkinMethodBooking && (

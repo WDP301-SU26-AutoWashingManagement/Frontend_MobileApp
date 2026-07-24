@@ -36,6 +36,7 @@ type BookingTab = typeof TAB_CONFIG[number]['id'];
 const BOOKING_STATUS_LABELS: Record<string, string> = {
   pending: 'Chờ xác nhận',
   confirmed: 'Đã xác nhận',
+  arrived: 'Xe đã tới',
   checked_in: 'Đã nhận xe',
   in_progress: 'Đang rửa',
   washed: 'Rửa xong',
@@ -47,6 +48,7 @@ const BOOKING_STATUS_LABELS: Record<string, string> = {
 const BOOKING_STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   pending: { bg: '#FEF3C7', text: '#92400E', border: '#FDE68A' },
   confirmed: { bg: '#E0F2FE', text: '#0369A1', border: '#BAE6FD' },
+  arrived: { bg: '#E0F2FE', text: '#0284C7', border: '#7DD3FC' },
   checked_in: { bg: '#E0E7FF', text: '#3730A3', border: '#C7D2FE' },
   in_progress: { bg: '#F3E8FF', text: '#6B21A8', border: '#E9D5FF' },
   washed: { bg: '#CCFBF1', text: '#115E59', border: '#99F6E4' },
@@ -355,7 +357,7 @@ export default function HistoryScreen() {
   const matchesTab = (booking: Booking, tab: BookingTab) => {
     const status = booking.booking_status;
     if (tab === 'upcoming') {
-      return ['pending', 'confirmed', 'checked_in', 'in_progress', 'washed'].includes(status);
+      return ['pending', 'confirmed', 'arrived', 'checked_in', 'in_progress', 'washed'].includes(status);
     }
     if (tab === 'completed') {
       return status === 'completed';
@@ -653,24 +655,51 @@ export default function HistoryScreen() {
                 </View>
 
                 <View style={styles.modalSection}>
-                  <Text style={styles.sectionTitle}>Chi tiết dịch vụ</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text style={styles.sectionTitle}>Chi tiết dịch vụ</Text>
+                    {(() => {
+                      const totalCount = detailModal.services?.length || 0;
+                      const completedCount = detailModal.services?.filter(s => s.is_completed).length || 0;
+                      if (totalCount === 0) return null;
+                      return (
+                        <View style={{ backgroundColor: completedCount === totalCount ? 'rgba(16,185,129,0.1)' : 'rgba(2,132,199,0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: completedCount === totalCount ? '#059669' : '#0284C7' }}>
+                            {completedCount === totalCount ? '✓ Đã hoàn thành' : `Tiến độ: ${completedCount}/${totalCount}`}
+                          </Text>
+                        </View>
+                      );
+                    })()}
+                  </View>
                   {detailModal.services?.map((s, index) => {
                     const svc = s.service_id || s.service;
                     const pkg = s.service_package_id || s.service_package;
                     const name = svc?.service_name || pkg?.package_name || pkg?.service_name || pkg?.name || 'Dịch vụ';
+                    const isDone = !!s.is_completed;
                     return (
                       <View key={s._id || index} style={styles.serviceItemRow}>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.serviceItemName}>{name}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <MaterialCommunityIcons
+                              name={isDone ? "check-circle" : "clock-outline"}
+                              size={18}
+                              color={isDone ? "#10B981" : "#9CA3AF"}
+                            />
+                            <Text style={[styles.serviceItemName, isDone && { color: '#059669', fontWeight: '700' }]}>{name}</Text>
+                          </View>
                           {pkg && (
                             <Text style={styles.packageBadge}>
                               Combo: {pkg.package_name || pkg.service_name || pkg.name}
                             </Text>
                           )}
                         </View>
-                        <Text style={styles.serviceItemPrice}>
-                          {s.price_snapshot?.toLocaleString('vi-VN')} đ
-                        </Text>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={styles.serviceItemPrice}>
+                            {s.price_snapshot?.toLocaleString('vi-VN')} đ
+                          </Text>
+                          <Text style={{ fontSize: 11, fontWeight: '600', marginTop: 2, color: isDone ? '#10B981' : '#F59E0B' }}>
+                            {isDone ? '✓ Đã xong' : '⏳ Đang xử lý'}
+                          </Text>
+                        </View>
                       </View>
                     );
                   })}
@@ -967,7 +996,7 @@ export default function HistoryScreen() {
 
       {/* VIEW REPORT MODAL */}
       <Modal
-        visible={viewReportModal.isOpen && !!viewReportModal.booking?.report}
+        visible={viewReportModal.isOpen && !!viewReportModal.booking}
         transparent
         animationType="fade"
         onRequestClose={() => setViewReportModal({ isOpen: false, booking: null })}
@@ -1172,7 +1201,13 @@ export default function HistoryScreen() {
                             viewReportModal.booking.report.compensation.transfer_image && (
                               <Pressable
                                 style={styles.confirmSigBtn}
-                                onPress={() => setConfirmSigModal({ isOpen: true, booking: viewReportModal.booking })}
+                                onPress={() => {
+                                  const b = viewReportModal.booking;
+                                  setViewReportModal({ isOpen: false, booking: null });
+                                  setTimeout(() => {
+                                    setConfirmSigModal({ isOpen: true, booking: b });
+                                  }, 150);
+                                }}
                               >
                                 <MaterialCommunityIcons name="pencil" size={16} color="#FFFFFF" />
                                 <Text style={styles.confirmSigBtnText}>Ký xác nhận đã nhận tiền</Text>
@@ -1197,72 +1232,88 @@ export default function HistoryScreen() {
       </Modal>
 
       {/* CONFIRM COMPENSATION SIGNATURE MODAL */}
-      <Modal
-        visible={confirmSigModal.isOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setConfirmSigModal({ isOpen: false, booking: null })}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { height: '80%' }]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Ký Nhận Tiền Đền Bù</Text>
-              <Pressable onPress={() => setConfirmSigModal({ isOpen: false, booking: null })}>
-                <MaterialCommunityIcons name="close" size={24} color="#64748B" />
-              </Pressable>
-            </View>
-
-            <ScrollView style={{ flexShrink: 1, marginVertical: 12 }} showsVerticalScrollIndicator={false} scrollEnabled={sigScrollEnabled}>
-              <Text style={{ fontSize: 13, color: '#475569', marginBottom: 12 }}>
-                Vui lòng ký vào khung bên dưới để xác nhận bạn đã nhận được số tiền đền bù từ cửa hàng.
-              </Text>
-
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 8 }}>
-                Chữ ký của bạn <Text style={{ color: '#EF4444' }}>*</Text>
-              </Text>
-
-              <View style={{ height: 200, backgroundColor: '#FFFFFF', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <SignatureScreen
-                  ref={sigRef}
-                  onOK={(sig) => handleConfirmSignatureSubmit(sig)}
-                  onClear={() => {}}
-                  onBegin={() => setSigScrollEnabled(false)}
-                  onEnd={() => setSigScrollEnabled(true)}
-                  descriptionText="Ký vào đây"
-                  clearText="Xóa"
-                  confirmText="Xác nhận"
-                  webStyle={`
-                    .m-signature-pad { box-shadow: none; border: none; margin: 0; padding: 0; }
-                    .m-signature-pad--body { border: 1px solid #E2E8F0; border-radius: 8px; }
-                    .m-signature-pad--footer { display: none; }
-                  `}
-                />
+      {confirmSigModal.isOpen && (
+        <Modal
+          visible={confirmSigModal.isOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => {
+            const b = confirmSigModal.booking;
+            setConfirmSigModal({ isOpen: false, booking: null });
+            if (b) setTimeout(() => setViewReportModal({ isOpen: true, booking: b }), 150);
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { height: '80%' }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Ký Nhận Tiền Đền Bù</Text>
+                <Pressable
+                  onPress={() => {
+                    const b = confirmSigModal.booking;
+                    setConfirmSigModal({ isOpen: false, booking: null });
+                    if (b) setTimeout(() => setViewReportModal({ isOpen: true, booking: b }), 150);
+                  }}
+                >
+                  <MaterialCommunityIcons name="close" size={24} color="#64748B" />
+                </Pressable>
               </View>
-            </ScrollView>
 
-            <View style={styles.modalFooterRow}>
-              <Pressable
-                style={styles.modalCancelBtn}
-                onPress={() => setConfirmSigModal({ isOpen: false, booking: null })}
-                disabled={isSubmittingConfirm}
-              >
-                <Text style={styles.modalCancelBtnText}>Hủy</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.modalSubmitBtn, isSubmittingConfirm && { opacity: 0.7 }]}
-                onPress={() => sigRef.current?.readSignature()}
-                disabled={isSubmittingConfirm}
-              >
-                {isSubmittingConfirm ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.modalSubmitBtnText}>Xác nhận hoàn tất</Text>
-                )}
-              </Pressable>
+              <ScrollView style={{ flexShrink: 1, marginVertical: 12 }} showsVerticalScrollIndicator={false} scrollEnabled={sigScrollEnabled}>
+                <Text style={{ fontSize: 13, color: '#475569', marginBottom: 12 }}>
+                  Vui lòng ký vào khung bên dưới để xác nhận bạn đã nhận được số tiền đền bù từ cửa hàng.
+                </Text>
+
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 8 }}>
+                  Chữ ký của bạn <Text style={{ color: '#EF4444' }}>*</Text>
+                </Text>
+
+                <View style={{ height: 200, backgroundColor: '#FFFFFF', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0' }}>
+                  <SignatureScreen
+                    ref={sigRef}
+                    onOK={(sig) => handleConfirmSignatureSubmit(sig)}
+                    onClear={() => {}}
+                    onBegin={() => setSigScrollEnabled(false)}
+                    onEnd={() => setSigScrollEnabled(true)}
+                    descriptionText="Ký vào đây"
+                    clearText="Xóa"
+                    confirmText="Xác nhận"
+                    webStyle={`
+                      .m-signature-pad { box-shadow: none; border: none; margin: 0; padding: 0; }
+                      .m-signature-pad--body { border: 1px solid #E2E8F0; border-radius: 8px; }
+                      .m-signature-pad--footer { display: none; }
+                    `}
+                  />
+                </View>
+              </ScrollView>
+
+              <View style={styles.modalFooterRow}>
+                <Pressable
+                  style={styles.modalCancelBtn}
+                  onPress={() => {
+                    const b = confirmSigModal.booking;
+                    setConfirmSigModal({ isOpen: false, booking: null });
+                    if (b) setTimeout(() => setViewReportModal({ isOpen: true, booking: b }), 150);
+                  }}
+                  disabled={isSubmittingConfirm}
+                >
+                  <Text style={styles.modalCancelBtnText}>Hủy</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.modalSubmitBtn, isSubmittingConfirm && { opacity: 0.7 }]}
+                  onPress={() => sigRef.current?.readSignature()}
+                  disabled={isSubmittingConfirm}
+                >
+                  {isSubmittingConfirm ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.modalSubmitBtnText}>Xác nhận hoàn tất</Text>
+                  )}
+                </Pressable>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </View>
   );
 }

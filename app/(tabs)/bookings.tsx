@@ -35,6 +35,8 @@ const getStatusStyles = (status: Booking['booking_status']) => {
       return { text: '#D97706', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.18)' };
     case 'confirmed':
       return { text: '#2563EB', bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.18)' };
+    case 'arrived':
+      return { text: '#0284C7', bg: 'rgba(2,132,199,0.08)', border: 'rgba(2,132,199,0.18)' };
     case 'checked_in':
       return { text: '#7C3AED', bg: 'rgba(139,92,246,0.08)', border: 'rgba(139,92,246,0.18)' };
     case 'in_progress':
@@ -56,6 +58,8 @@ const getStatusLabel = (status: Booking['booking_status']) => {
       return 'Chờ xác nhận';
     case 'confirmed':
       return 'Đã xác nhận';
+    case 'arrived':
+      return 'Xe đã tới';
     case 'checked_in':
       return 'Đã check-in';
     case 'in_progress':
@@ -565,20 +569,28 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
   const [validatedPromo, setValidatedPromo] = useState<Promotion | null>(null);
   const [validatingPromo, setValidatingPromo] = useState(false);
   const [promoError, setPromoError] = useState('');
-  const [vatRequested, setVatRequested] = useState(false);
-  const [taxCode, setTaxCode] = useState('');
 
-  // Date list generation (next 7 days)
+  // Customer Tier Booking Window (in days)
+  const bookingWindowDays = useMemo(() => {
+    const tier = user?.role_data?.tier_id;
+    if (tier && typeof tier === 'object' && 'booking_window_days' in tier && typeof (tier as any).booking_window_days === 'number') {
+      return (tier as any).booking_window_days || 7;
+    }
+    return 7;
+  }, [user]);
+
+  // Date list generation (based on tier booking_window_days)
   const datesList = useMemo(() => {
     const list = [];
     const today = new Date();
-    for (let i = 0; i < 7; i++) {
+    const daysCount = Math.max(1, bookingWindowDays);
+    for (let i = 0; i <= daysCount; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
       list.push(d);
     }
     return list;
-  }, []);
+  }, [bookingWindowDays]);
 
   const formatDateLabel = (d: Date) => {
     const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
@@ -809,6 +821,17 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
     return selectedCombo.services.map((s: any) => s._id || s.id);
   }, [selectedCombo]);
 
+  // Identify default washing service from individual services
+  const washingService = useMemo(() => {
+    return individualServices.find(
+      s => s.service_name === 'Dịch vụ rửa xe' || s.service_name?.toLowerCase() === 'dịch vụ rửa xe'
+    );
+  }, [individualServices]);
+
+  const washingServiceId = useMemo(() => {
+    return washingService ? (washingService._id || washingService.id || '') : '';
+  }, [washingService]);
+
   // Calculated Pricing Estimate
   const priceEstimate = useMemo(() => {
     let totalBasePrice = 0;
@@ -816,19 +839,24 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
       totalBasePrice += selectedCombo.finalPrice;
     }
 
+    // Always include default washing service price if available and not already inside selected combo
+    if (washingServiceId && !includedServiceIdsInCombo.includes(washingServiceId)) {
+      totalBasePrice += Number(washingService?.service_price) || 0;
+    }
+
     selectedServiceIds.forEach(id => {
-      // Exclude service if it is already in the selected combo
-      if (!includedServiceIdsInCombo.includes(id)) {
+      // Exclude service if it is already in the selected combo or is the default washing service (already added above)
+      if (!includedServiceIdsInCombo.includes(id) && id !== washingServiceId) {
         const svc = individualServices.find(s => (s._id || s.id) === id);
         if (svc) {
-          totalBasePrice += svc.service_price || 0;
+          totalBasePrice += Number(svc.service_price) || 0;
         }
       }
     });
 
     if (totalBasePrice === 0) return null;
     return estimateBookingPrice(totalBasePrice, validatedPromo, tierDiscountPercentage);
-  }, [selectedServiceIds, selectedCombo, validatedPromo, individualServices, includedServiceIdsInCombo, tierDiscountPercentage]);
+  }, [selectedServiceIds, selectedCombo, validatedPromo, individualServices, includedServiceIdsInCombo, tierDiscountPercentage, washingServiceId, washingService]);
 
   const handleApplyPromotion = async () => {
     if (!promoCode.trim()) {
@@ -859,7 +887,8 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
       }
     }
     if (step === 2) {
-      if (!selectedComboId && selectedServiceIds.length === 0) {
+      const hasDefaultWashing = !!washingServiceId;
+      if (!selectedComboId && selectedServiceIds.length === 0 && !hasDefaultWashing) {
         Alert.alert('Thông báo', 'Vui lòng chọn ít nhất một Combo hoặc Dịch vụ lẻ');
         return;
       }
@@ -873,19 +902,20 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
 
   const handleCreateSubmit = async () => {
     if (saving) return;
-    if (vatRequested && !taxCode.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập Mã số thuế để xuất hóa đơn VAT');
-      return;
-    }
 
     setSaving(true);
     try {
       const servicesPayload: { service_id: string; service_package_id?: string }[] = [];
 
+      // Always include default washing service if not in combo
+      if (washingServiceId && !includedServiceIdsInCombo.includes(washingServiceId)) {
+        servicesPayload.push({ service_id: washingServiceId });
+      }
+
       // Selected individual services
       selectedServiceIds.forEach(id => {
-        // Only add if not already in the combo to avoid duplicates
-        if (!includedServiceIdsInCombo.includes(id)) {
+        // Only add if not already in the combo and not the washing service
+        if (!includedServiceIdsInCombo.includes(id) && id !== washingServiceId) {
           servicesPayload.push({ service_id: id });
         }
       });
@@ -912,8 +942,6 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
         services: servicesPayload,
         booking_source: 'app',
         ...(validatedPromo ? { promotion_id: validatedPromo._id || validatedPromo.id } : {}),
-        vat_requested: vatRequested,
-        tax_code: vatRequested ? taxCode.trim() : undefined,
       };
 
       await bookingService.create(payload);
@@ -926,8 +954,6 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
       setSelectedServiceIds([]);
       setValidatedPromo(null);
       setPromoCode('');
-      setVatRequested(false);
-      setTaxCode('');
       setStep(1);
 
       onSuccess();
@@ -940,6 +966,7 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
 
   const handleToggleService = (serviceId: string) => {
     if (includedServiceIdsInCombo.includes(serviceId)) return; // Don't let users toggle combo services
+    if (washingServiceId && serviceId === washingServiceId) return; // Don't let users toggle default washing service
 
     setSelectedServiceIds(prev => {
       if (prev.includes(serviceId)) {
@@ -1341,15 +1368,17 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
                         individualServices.map((svc) => {
                           const id = svc._id || svc.id || '';
                           const isIncluded = includedServiceIdsInCombo.includes(id);
-                          const isSelected = selectedServiceIds.includes(id) || isIncluded;
+                          const isWashing = id === washingServiceId || svc.service_name === 'Dịch vụ rửa xe';
+                          const isSelected = selectedServiceIds.includes(id) || isIncluded || isWashing;
+                          const isDisabled = isIncluded || isWashing;
 
                           return (
                             <Pressable
                               key={id}
-                              disabled={isIncluded}
+                              disabled={isDisabled}
                               style={[
                                 styles.serviceCard,
-                                isIncluded && styles.serviceCardDisabled,
+                                isDisabled && styles.serviceCardDisabled,
                                 isSelected && !isIncluded && styles.serviceCardActive,
                               ]}
                               onPress={() => handleToggleService(id)}>
@@ -1357,7 +1386,7 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
                                 <View
                                   style={[
                                     styles.checkbox,
-                                    isIncluded && styles.checkboxDisabled,
+                                    isDisabled && styles.checkboxDisabled,
                                     isSelected && styles.checkboxChecked,
                                   ]}>
                                   {isSelected && <MaterialCommunityIcons name="check" size={14} color="#FFFFFF" />}
@@ -1372,8 +1401,13 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
                                         <Text style={styles.comboTagText}>Thuộc Combo</Text>
                                       </View>
                                     )}
+                                    {isWashing && !isIncluded && (
+                                      <View style={[styles.comboTag, { backgroundColor: 'rgba(59,130,246,0.1)' }]}>
+                                        <Text style={[styles.comboTagText, { color: '#2563EB' }]}>Mặc định</Text>
+                                      </View>
+                                    )}
                                   </View>
-                                  <Text style={[styles.servicePrice, isIncluded && styles.servicePriceDisabled]}>
+                                  <Text style={[styles.servicePrice, isDisabled && styles.servicePriceDisabled]}>
                                     {svc.service_price.toLocaleString('vi-VN')} đ
                                   </Text>
                                 </View>
@@ -1419,8 +1453,13 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
                             <Text style={styles.summaryComboText}>[Combo] {selectedCombo.package_name}</Text>
                           </View>
                         )}
+                        {washingServiceId && !includedServiceIdsInCombo.includes(washingServiceId) && (
+                          <Text style={styles.summaryServiceItem}>
+                            • {washingService?.service_name || 'Dịch vụ rửa xe'} (Mặc định)
+                          </Text>
+                        )}
                         {selectedServiceIds.map((id) => {
-                          if (includedServiceIdsInCombo.includes(id)) return null;
+                          if (includedServiceIdsInCombo.includes(id) || id === washingServiceId) return null;
                           const svc = individualServices.find((s) => (s._id || s.id) === id);
                           if (!svc) return null;
                           return (
@@ -1472,26 +1511,6 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
                       </View>
                     )}
                     {promoError ? <Text style={styles.promoError}>{promoError}</Text> : null}
-                  </View>
-
-                  {/* VAT Invoice Requests */}
-                  <View style={styles.vatContainer}>
-                    <Pressable
-                      style={styles.vatRow}
-                      onPress={() => setVatRequested(!vatRequested)}>
-                      <View style={[styles.checkbox, vatRequested && styles.checkboxChecked]}>
-                        {vatRequested && <MaterialCommunityIcons name="check" size={14} color="#FFFFFF" />}
-                      </View>
-                      <Text style={styles.vatText}>Tôi muốn xuất hóa đơn đỏ (VAT) cho dịch vụ này</Text>
-                    </Pressable>
-                    {vatRequested && (
-                      <TextInput
-                        style={styles.vatInput}
-                        placeholder="Nhập Mã số thuế công ty..."
-                        value={taxCode}
-                        onChangeText={setTaxCode}
-                      />
-                    )}
                   </View>
 
                   {/* Cost breakdown */}

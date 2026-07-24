@@ -41,6 +41,7 @@ const getStatusStyles = (status: Booking['booking_status'] | 'washed') => {
   switch (status) {
     case 'pending': return { text: '#F59E0B', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.18)' };
     case 'confirmed': return { text: '#2563EB', bg: 'rgba(39,130,246,0.08)', border: 'rgba(39,130,246,0.18)' };
+    case 'arrived': return { text: '#0284C7', bg: 'rgba(2,132,199,0.08)', border: 'rgba(2,132,199,0.18)' };
     case 'checked_in': return { text: PURPLE, bg: 'rgba(139,92,246,0.08)', border: 'rgba(139,92,246,0.18)' };
     case 'in_progress': return { text: '#DB2777', bg: 'rgba(236,72,153,0.08)', border: 'rgba(236,72,153,0.18)' };
     case 'washed': return { text: '#0D9488', bg: 'rgba(13,148,136,0.08)', border: 'rgba(13,148,136,0.18)' };
@@ -54,6 +55,7 @@ const getStatusLabel = (status: any) => {
   switch (status) {
     case 'pending': return 'Chờ xác nhận';
     case 'confirmed': return 'Đã xác nhận';
+    case 'arrived': return 'Xe đã tới';
     case 'checked_in': return 'Đã check-in';
     case 'in_progress': return 'Đang rửa xe';
     case 'washed': return 'Rửa xong';
@@ -91,8 +93,8 @@ export default function CheckinScreen() {
     try {
       setLoading(true);
       const list = await bookingService.list();
-      // Only keep 'confirmed' status bookings (waiting for check-in)
-      const confirmed = list.filter((b) => b.booking_status === 'confirmed');
+      // Keep 'confirmed' and 'arrived' status bookings (waiting for check-in)
+      const confirmed = list.filter((b) => b.booking_status === 'confirmed' || b.booking_status === 'arrived');
       setBookings(confirmed);
 
       // Check checklist status for 'confirmed' bookings
