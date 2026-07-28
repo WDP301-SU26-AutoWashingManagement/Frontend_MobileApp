@@ -24,7 +24,7 @@ const LINKS = [
 const SOCIALS = [
   { icon: 'facebook', label: 'Facebook' },
   { icon: 'instagram', label: 'Instagram' },
-  { icon: 'tiktok', label: 'TikTok' },
+  { icon: 'music-note', label: 'TikTok' },
 ];
 
 export default function Footer() {

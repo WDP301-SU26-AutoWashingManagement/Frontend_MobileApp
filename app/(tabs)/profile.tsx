@@ -78,7 +78,7 @@ export default function ProfileScreen() {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) { Alert.alert('Quyền truy cập bị từ chối', 'Vui lòng cho phép truy cập ảnh'); return; }
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, quality: 0.7 });
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.7 });
       // @ts-ignore
       if (!result.cancelled && !result.canceled) {
         // @ts-ignore

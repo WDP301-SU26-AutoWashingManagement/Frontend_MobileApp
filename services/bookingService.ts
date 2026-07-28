@@ -522,13 +522,84 @@ class BookingService {
     }
   }
 
+  async verifyImageConfidence(
+    imageUri: string,
+    type: 'QR' | 'BILL' = 'QR',
+    onProgress: (event: { progress: number; step: string; data: any }) => void
+  ): Promise<any> {
+    const token = await AsyncStorage.getItem(ACCESS_TOKEN_KEY);
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE_URL}/confidence/verify-image`);
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
+
+      const formData = new FormData();
+      const filename = imageUri.split('/').pop() || 'image.jpg';
+      const match = /\.(\w+)$/.exec(filename);
+      const ext = match ? match[1].toLowerCase() : 'jpeg';
+      const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+
+      formData.append('image', {
+        uri: imageUri,
+        name: filename,
+        type: mimeType,
+      } as any);
+      formData.append('type', type);
+
+      let lastResult: any = null;
+
+      const processResponse = () => {
+        const text = xhr.responseText || '';
+        const lines = text.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data:')) {
+            const jsonStr = trimmed.replace(/^data:\s*/, '').trim();
+            try {
+              const json = JSON.parse(jsonStr);
+              if (json.progress !== undefined) {
+                onProgress(json);
+              }
+              if (json.progress === 100 && json.data) {
+                lastResult = json.data;
+              }
+            } catch (e) {
+              // ignore incomplete json chunk until full line arrives
+            }
+          }
+        }
+      };
+
+      xhr.onprogress = () => {
+        processResponse();
+      };
+
+      xhr.onload = () => {
+        processResponse();
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(lastResult);
+        } else {
+          reject(new Error(`Lỗi máy chủ (${xhr.status})`));
+        }
+      };
+
+      xhr.onerror = (err) => {
+        reject(err);
+      };
+
+      xhr.send(formData);
+    });
+  }
+
   async uploadCompensationQr(appointmentId: string, qrImageBase64: string): Promise<any> {
     try {
       const response = await this.axiosInstance.patch<any>(
         `/booking-checklists/appointment/${appointmentId}/report/upload-qr`,
         { qr_image: qrImageBase64 }
       );
-      return response.data;
+      return response.data?.data || response.data;
     } catch (error) {
       console.error('Error uploading compensation QR in Mobile:', error);
       throw error;
@@ -541,7 +612,7 @@ class BookingService {
         `/booking-checklists/appointment/${appointmentId}/report/customer-confirm`,
         { customer_signature_confirm: signatureBase64 }
       );
-      return response.data;
+      return response.data?.data || response.data;
     } catch (error) {
       console.error('Error confirming compensation in Mobile:', error);
       throw error;

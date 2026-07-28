@@ -58,7 +58,7 @@ export default function IndividualServices() {
     if (n.includes('kính') || n.includes('gạt')) return 'windshield-outline';
     if (n.includes('nội thất') || n.includes('dọn')) return 'car-seat';
     if (n.includes('khoang máy') || n.includes('động cơ')) return 'engine';
-    return 'car-clean';
+    return 'car-wash';
   };
 
   if (loading) {

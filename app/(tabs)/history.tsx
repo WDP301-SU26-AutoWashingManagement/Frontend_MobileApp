@@ -125,12 +125,24 @@ export default function HistoryScreen() {
   const [reportDescription, setReportDescription] = useState('');
   const [reportEvidence, setReportEvidence] = useState<string[]>([]);
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [signedHandoverIds, setSignedHandoverIds] = useState<Set<string>>(new Set());
 
   const [viewReportModal, setViewReportModal] = useState<{ isOpen: boolean; booking: Booking | null }>({
     isOpen: false,
     booking: null,
   });
   const [isUploadingQr, setIsUploadingQr] = useState(false);
+
+  const [selectedQrPreview, setSelectedQrPreview] = useState<{
+    imageUri: string;
+    base64Image: string;
+    appointmentId: string;
+  } | null>(null);
+  const [isVerifyingQr, setIsVerifyingQr] = useState(false);
+  const [verifyQrProgress, setVerifyQrProgress] = useState(0);
+  const [verifyQrStep, setVerifyQrStep] = useState('');
+  const [verifyQrResult, setVerifyQrResult] = useState<any | null>(null);
+  const [verifyQrError, setVerifyQrError] = useState('');
 
   const [confirmSigModal, setConfirmSigModal] = useState<{ isOpen: boolean; booking: Booking | null }>({
     isOpen: false,
@@ -195,6 +207,31 @@ export default function HistoryScreen() {
         return timeB - timeA;
       });
       setBookings(sorted);
+
+      const washedOrCompleted = sorted.filter(
+        (b: any) => b.booking_status === 'washed' || b.booking_status === 'completed'
+      );
+      if (washedOrCompleted.length > 0) {
+        Promise.all(
+          washedOrCompleted.map(async (b: any) => {
+            try {
+              const cl = await bookingService.getChecklist(b._id);
+              return { id: b._id, hasSigned: !!cl?.customer_signature_after };
+            } catch {
+              return { id: b._id, hasSigned: false };
+            }
+          })
+        ).then((results) => {
+          setSignedHandoverIds((prev) => {
+            const newSet = new Set(prev);
+            results.forEach((r) => {
+              if (r.hasSigned) newSet.add(r.id);
+              else newSet.delete(r.id);
+            });
+            return newSet;
+          });
+        });
+      }
     } catch (err) {
       console.error('Failed to load bookings:', err);
       Alert.alert('Lỗi', 'Không thể tải lịch đặt xe. Vui lòng thử lại sau.');
@@ -262,15 +299,15 @@ export default function HistoryScreen() {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: false,
         quality: 0.7,
         allowsMultipleSelection: true,
-        selectionLimit: 5 - reportEvidence.length,
+        selectionLimit: 10 - reportEvidence.length,
       });
       if (!result.canceled && result.assets) {
         const selectedUris = result.assets.map((asset) => asset.uri);
-        setReportEvidence((prev) => [...prev, ...selectedUris].slice(0, 5));
+        setReportEvidence((prev) => [...prev, ...selectedUris].slice(0, 10));
       }
     } catch (error) {
       console.error('Error picking evidence images:', error);
@@ -310,11 +347,11 @@ export default function HistoryScreen() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Quyền truy cập', 'Cần cấp quyền truy cập thư viện ảnh để chọn ảnh QR.');
+        Alert.alert('Quyền truy cập', 'Cần cấp quyền truy cập thư viện ảnh để chọn QR.');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: false,
         quality: 0.7,
         base64: true,
@@ -325,21 +362,88 @@ export default function HistoryScreen() {
           ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`
           : asset.uri;
 
-        setIsUploadingQr(true);
-        const updatedReport = await bookingService.uploadCompensationQr(appointmentId, base64Image);
-        Alert.alert('Thành công', 'Tải lên QR tài khoản thành công!');
-        setViewReportModal((prev) => {
-          if (!prev.booking) return prev;
-          return {
-            ...prev,
-            booking: {
-              ...prev.booking,
-              report: updatedReport,
-            },
-          };
+        setSelectedQrPreview({
+          appointmentId,
+          imageUri: asset.uri,
+          base64Image,
         });
-        await loadBookings(false);
+        setVerifyQrResult(null);
+        setVerifyQrError('');
+        setVerifyQrProgress(0);
+        setVerifyQrStep('');
       }
+    } catch (error) {
+      console.error('Error picking QR image:', error);
+      Alert.alert('Lỗi', 'Không thể chọn ảnh QR từ thư viện');
+    }
+  };
+
+  const handleVerifyQrImage = async () => {
+    if (!selectedQrPreview) return;
+    setIsVerifyingQr(true);
+    setVerifyQrProgress(0);
+    setVerifyQrStep('Đang kiểm tra...');
+    setVerifyQrResult(null);
+    setVerifyQrError('');
+
+    try {
+      const result = await bookingService.verifyImageConfidence(
+        selectedQrPreview.imageUri,
+        'QR',
+        (ev) => {
+          setVerifyQrProgress(ev.progress);
+          if (ev.progress === -1) {
+            setVerifyQrError(ev.step || 'Lỗi xử lý ảnh QR');
+            setIsVerifyingQr(false);
+          } else {
+            setVerifyQrStep(ev.step);
+          }
+        }
+      );
+      setVerifyQrResult(result);
+    } catch (err: any) {
+      console.error('Error verifying QR image:', err);
+      setVerifyQrError(err.message || 'Lỗi khi kiểm tra độ tin cậy ảnh QR');
+    } finally {
+      setIsVerifyingQr(false);
+    }
+  };
+
+  const handleConfirmUploadQr = async () => {
+    if (!selectedQrPreview) return;
+    if (!verifyQrResult) {
+      Alert.alert('Cảnh báo', 'Vui lòng kiểm tra độ tin cậy trước khi xác nhận tải lên');
+      return;
+    }
+    const confidencePercent = Math.round((verifyQrResult.confidence || 0) * 100);
+    if (confidencePercent < 70) {
+      Alert.alert(
+        'Lỗi',
+        `Độ tin cậy của ảnh chỉ đạt ${confidencePercent}% (Yêu cầu phải từ 70% trở lên mới được tải lên)`
+      );
+      return;
+    }
+
+    setIsUploadingQr(true);
+    try {
+      const response = await bookingService.uploadCompensationQr(
+        selectedQrPreview.appointmentId,
+        selectedQrPreview.base64Image
+      );
+      const reportData = response?.data || response;
+      Alert.alert('Thành công', 'Tải lên QR tài khoản thành công!');
+      setSelectedQrPreview(null);
+      setViewReportModal((prev) => {
+        if (!prev.booking) return prev;
+        return {
+          ...prev,
+          booking: {
+            ...prev.booking,
+            report: reportData,
+          },
+        };
+      });
+      await loadBookings(false);
     } catch (err: any) {
       console.error('Error uploading QR:', err);
       Alert.alert('Lỗi', err.response?.data?.message || 'Lỗi khi tải lên ảnh QR');
@@ -475,14 +579,21 @@ export default function HistoryScreen() {
                 <Text style={styles.cancelButtonText}>Hủy lịch</Text>
               </Pressable>
             )}
-            {item.booking_status === 'washed' && !item.report && (
-              <Pressable
-                style={styles.reportButton}
-                onPress={() => handleOpenCreateReport(item)}
-              >
-                <MaterialCommunityIcons name="message-alert-outline" size={13} color="#D97706" />
-                <Text style={styles.reportButtonText}>Khiếu nại</Text>
-              </Pressable>
+            {!item.report && (
+              signedHandoverIds.has(item._id) ? (
+                <View style={styles.handoverSignedBadge}>
+                  <MaterialCommunityIcons name="check-circle-outline" size={13} color="#059669" />
+                  <Text style={styles.handoverSignedText}>Đã bàn giao xe</Text>
+                </View>
+              ) : item.booking_status === 'washed' ? (
+                <Pressable
+                  style={styles.reportButton}
+                  onPress={() => handleOpenCreateReport(item)}
+                >
+                  <MaterialCommunityIcons name="message-alert-outline" size={13} color="#D97706" />
+                  <Text style={styles.reportButtonText}>Khiếu nại</Text>
+                </Pressable>
+              ) : null
             )}
             {!!item.report && (
               <Pressable
@@ -898,16 +1009,29 @@ export default function HistoryScreen() {
 
                 <ScrollView style={{ flexShrink: 1, marginVertical: 12 }} showsVerticalScrollIndicator={false}>
                   <View style={{ gap: 14 }}>
+                    {reportModal.booking && signedHandoverIds.has(reportModal.booking._id) && (
+                      <View style={styles.handoverWarningBox}>
+                        <MaterialCommunityIcons name="alert-circle-outline" size={18} color="#D97706" />
+                        <Text style={styles.handoverWarningText}>
+                          Đơn hàng này đã được ký xác nhận bàn giao xe. Bạn không thể tạo thêm đơn khiếu nại.
+                        </Text>
+                      </View>
+                    )}
+
                     <View>
                       <Text style={styles.inputLabel}>
                         Tiêu đề <Text style={{ color: '#EF4444' }}>*</Text>
                       </Text>
                       <TextInput
-                        style={styles.textInputSingle}
+                        style={[
+                          styles.textInputSingle,
+                          reportModal.booking && signedHandoverIds.has(reportModal.booking._id) && { backgroundColor: '#F1F5F9', color: '#94A3B8' }
+                        ]}
                         placeholder="Vd: Xe chưa được rửa sạch phần bánh"
                         placeholderTextColor="#94A3B8"
                         value={reportTitle}
                         onChangeText={setReportTitle}
+                        editable={!(reportModal.booking && signedHandoverIds.has(reportModal.booking._id))}
                       />
                     </View>
 
@@ -917,22 +1041,30 @@ export default function HistoryScreen() {
                           Họ và tên <Text style={{ color: '#EF4444' }}>*</Text>
                         </Text>
                         <TextInput
-                          style={styles.textInputSingle}
+                          style={[
+                            styles.textInputSingle,
+                            reportModal.booking && signedHandoverIds.has(reportModal.booking._id) && { backgroundColor: '#F1F5F9', color: '#94A3B8' }
+                          ]}
                           placeholder="Nhập họ tên"
                           placeholderTextColor="#94A3B8"
                           value={reportFullname}
                           onChangeText={setReportFullname}
+                          editable={!(reportModal.booking && signedHandoverIds.has(reportModal.booking._id))}
                         />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.inputLabel}>Số điện thoại</Text>
                         <TextInput
-                          style={styles.textInputSingle}
+                          style={[
+                            styles.textInputSingle,
+                            reportModal.booking && signedHandoverIds.has(reportModal.booking._id) && { backgroundColor: '#F1F5F9', color: '#94A3B8' }
+                          ]}
                           placeholder="Để tiện liên hệ"
                           placeholderTextColor="#94A3B8"
                           keyboardType="phone-pad"
                           value={reportPhone}
                           onChangeText={setReportPhone}
+                          editable={!(reportModal.booking && signedHandoverIds.has(reportModal.booking._id))}
                         />
                       </View>
                     </View>
@@ -942,33 +1074,39 @@ export default function HistoryScreen() {
                         Mô tả chi tiết <Text style={{ color: '#EF4444' }}>*</Text>
                       </Text>
                       <TextInput
-                        style={styles.textInputMulti}
+                        style={[
+                          styles.textInputMulti,
+                          reportModal.booking && signedHandoverIds.has(reportModal.booking._id) && { backgroundColor: '#F1F5F9', color: '#94A3B8' }
+                        ]}
                         placeholder="Vui lòng mô tả chi tiết vấn đề bạn gặp phải..."
                         placeholderTextColor="#94A3B8"
                         multiline
                         numberOfLines={4}
                         value={reportDescription}
                         onChangeText={setReportDescription}
+                        editable={!(reportModal.booking && signedHandoverIds.has(reportModal.booking._id))}
                       />
                     </View>
 
                     <View>
                       <Text style={styles.inputLabel}>
-                        Hình ảnh bằng chứng (Tối đa 5 ảnh)
+                        Hình ảnh bằng chứng (Tối đa 10 ảnh)
                       </Text>
                       <View style={styles.evidenceGrid}>
                         {reportEvidence.map((uri, idx) => (
                           <View key={idx} style={styles.evidenceThumbContainer}>
                             <Image source={{ uri }} style={styles.evidenceThumb} />
-                            <Pressable
-                              style={styles.evidenceRemoveBtn}
-                              onPress={() => setReportEvidence((prev) => prev.filter((_, i) => i !== idx))}
-                            >
-                              <MaterialCommunityIcons name="close-circle" size={18} color="#EF4444" />
-                            </Pressable>
+                            {!(reportModal.booking && signedHandoverIds.has(reportModal.booking._id)) && (
+                              <Pressable
+                                style={styles.evidenceRemoveBtn}
+                                onPress={() => setReportEvidence((prev) => prev.filter((_, i) => i !== idx))}
+                              >
+                                <MaterialCommunityIcons name="close-circle" size={18} color="#EF4444" />
+                              </Pressable>
+                            )}
                           </View>
                         ))}
-                        {reportEvidence.length < 5 && (
+                        {reportEvidence.length < 10 && !(reportModal.booking && signedHandoverIds.has(reportModal.booking._id)) && (
                           <Pressable style={styles.uploadBox} onPress={handlePickEvidenceImages}>
                             <MaterialCommunityIcons name="upload" size={22} color="#64748B" />
                             <Text style={styles.uploadBoxText}>Tải ảnh</Text>
@@ -987,17 +1125,19 @@ export default function HistoryScreen() {
                   >
                     <Text style={styles.modalCancelBtnText}>Hủy</Text>
                   </Pressable>
-                  <Pressable
-                    style={[styles.modalSubmitBtn, isSubmittingReport && { opacity: 0.7 }]}
-                    onPress={handleSubmitReport}
-                    disabled={isSubmittingReport}
-                  >
-                    {isSubmittingReport ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.modalSubmitBtnText}>Gửi khiếu nại</Text>
-                    )}
-                  </Pressable>
+                  {!(reportModal.booking && signedHandoverIds.has(reportModal.booking._id)) && (
+                    <Pressable
+                      style={[styles.modalSubmitBtn, isSubmittingReport && { opacity: 0.7 }]}
+                      onPress={handleSubmitReport}
+                      disabled={isSubmittingReport}
+                    >
+                      {isSubmittingReport ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.modalSubmitBtnText}>Gửi khiếu nại</Text>
+                      )}
+                    </Pressable>
+                  )}
                 </View>
               </View>
             </View>
@@ -1024,7 +1164,122 @@ export default function HistoryScreen() {
               </Pressable>
             </View>
 
-            {viewReportModal.booking?.report && (
+            {selectedQrPreview ? (
+              <ScrollView style={{ flexShrink: 1, marginVertical: 12 }} showsVerticalScrollIndicator={false}>
+                <View style={{ alignItems: 'center', gap: 12, paddingVertical: 8 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#0F172A' }}>
+                    Kiểm tra ảnh QR tài khoản
+                  </Text>
+                  <Image
+                    source={{ uri: selectedQrPreview.imageUri }}
+                    style={{ width: 180, height: 180, borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1' }}
+                    resizeMode="contain"
+                  />
+
+                  {!isVerifyingQr && !verifyQrResult && (
+                    <Pressable
+                      style={styles.verifyAiBtn}
+                      onPress={handleVerifyQrImage}
+                    >
+                      <MaterialCommunityIcons name="robot" size={16} color="#FFFFFF" />
+                      <Text style={styles.verifyAiBtnText}>Kiểm tra độ tin cậy của ảnh</Text>
+                    </Pressable>
+                  )}
+
+                  {isVerifyingQr && (
+                    <View style={styles.verifyProgressContainer}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <Text style={styles.verifyProgressStep}>{verifyQrStep}</Text>
+                        <Text style={styles.verifyProgressPercent}>{verifyQrProgress}%</Text>
+                      </View>
+                      <View style={styles.verifyProgressBarBg}>
+                        <View style={[styles.verifyProgressBarFill, { width: `${Math.max(verifyQrProgress, 0)}%` }]} />
+                      </View>
+                    </View>
+                  )}
+
+                  {!!verifyQrError && (
+                    <View style={styles.verifyErrorBox}>
+                      <MaterialCommunityIcons name="alert-circle" size={16} color="#EF4444" />
+                      <Text style={styles.verifyErrorText}>{verifyQrError}</Text>
+                    </View>
+                  )}
+
+                  {verifyQrResult && (
+                    <View style={styles.verifyResultBox}>
+                      <View style={styles.verifyResultHeader}>
+                        <Text style={styles.verifyResultTitle}>Độ tin cậy AI:</Text>
+                        <View
+                          style={[
+                            styles.confidenceBadge,
+                            (verifyQrResult.confidence * 100) >= 70
+                              ? { backgroundColor: '#D1FAE5' }
+                              : { backgroundColor: '#FEE2E2' },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.confidenceBadgeText,
+                              (verifyQrResult.confidence * 100) >= 70
+                                ? { color: '#047857' }
+                                : { color: '#B91C1C' },
+                            ]}
+                          >
+                            {Math.round(verifyQrResult.confidence * 100)}%
+                          </Text>
+                        </View>
+                      </View>
+
+                      {!!verifyQrResult.reason && (
+                        <View
+                          style={[
+                            styles.reasonBox,
+                            (verifyQrResult.confidence * 100) >= 70
+                              ? { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }
+                              : { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+                          ]}
+                        >
+                          <Text style={styles.reasonText}>
+                            <Text style={{ fontWeight: '700' }}>Chi tiết: </Text>
+                            {verifyQrResult.reason}
+                          </Text>
+                        </View>
+                      )}
+
+                      {(verifyQrResult.details?.analysis?.providerName || verifyQrResult.details?.analysis?.accountNumber) && (
+                        <View style={{ gap: 4, marginTop: 4 }}>
+                          {!!verifyQrResult.details?.analysis?.providerName && (
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                              <Text style={{ fontSize: 12, color: '#64748B' }}>Ngân hàng:</Text>
+                              <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>
+                                {verifyQrResult.details.analysis.providerName}
+                              </Text>
+                            </View>
+                          )}
+                          {!!verifyQrResult.details?.analysis?.accountNumber && (
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                              <Text style={{ fontSize: 12, color: '#64748B' }}>Số tài khoản:</Text>
+                              <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>
+                                {verifyQrResult.details.analysis.accountNumber}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
+
+                      {(verifyQrResult.confidence * 100) < 70 && (
+                        <View style={styles.lowConfidenceAlert}>
+                          <MaterialCommunityIcons name="alert" size={16} color="#DC2626" />
+                          <Text style={styles.lowConfidenceAlertText}>
+                            Độ tin cậy chưa đạt 70%. Không thể xác nhận tải lên!
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </View>
+              </ScrollView>
+            ) : viewReportModal.booking?.report ? (
               <ScrollView style={{ flexShrink: 1, marginVertical: 12 }} showsVerticalScrollIndicator={false}>
                 <View style={{ gap: 14 }}>
                   <View>
@@ -1200,50 +1455,74 @@ export default function HistoryScreen() {
                             )}
                           </View>
 
-                          {viewReportModal.booking.report.compensation.customer_signature_confirm ? (
-                            <View style={[styles.signatureBox, { marginTop: 10, backgroundColor: '#ECFDF5' }]}>
-                              <Text style={[styles.sigRoleText, { color: '#047857', fontWeight: '700' }]}>Chữ ký nhận tiền (KH)</Text>
-                              <Image
-                                source={{ uri: viewReportModal.booking.report.compensation.customer_signature_confirm }}
-                                style={styles.signatureImage}
-                              />
-                            </View>
-                          ) : (
-                            viewReportModal.booking.report.compensation.transfer_image && (
-                              <Pressable
-                                style={styles.confirmSigBtn}
-                                onPress={() => {
-                                  const b = viewReportModal.booking;
-                                  setViewReportModal({ isOpen: false, booking: null });
-                                  setTimeout(() => {
-                                    setConfirmSigModal({ isOpen: true, booking: b });
-                                  }, 150);
-                                }}
-                              >
-                                <MaterialCommunityIcons name="pencil" size={16} color="#FFFFFF" />
-                                <Text style={styles.confirmSigBtnText}>Ký xác nhận đã nhận tiền</Text>
-                              </Pressable>
-                            )
-                          )}
+                          <View style={{ marginTop: 8 }}>
+                            {viewReportModal.booking.report.compensation.customer_signature_confirm ? (
+                              <View style={[styles.signatureBox, { marginTop: 10, backgroundColor: '#ECFDF5' }]}>
+                                <Text style={[styles.sigRoleText, { color: '#047857', fontWeight: '700' }]}>Chữ ký nhận tiền (KH)</Text>
+                                <Image
+                                  source={{ uri: viewReportModal.booking.report.compensation.customer_signature_confirm }}
+                                  style={styles.signatureImage}
+                                />
+                              </View>
+                            ) : (
+                              viewReportModal.booking.report.compensation.transfer_image && (
+                                <Pressable
+                                  style={styles.confirmSigBtn}
+                                  onPress={() => {
+                                    const b = viewReportModal.booking;
+                                    setViewReportModal({ isOpen: false, booking: null });
+                                    setTimeout(() => {
+                                      setConfirmSigModal({ isOpen: true, booking: b });
+                                    }, 150);
+                                  }}
+                                >
+                                  <MaterialCommunityIcons name="pencil" size={16} color="#FFFFFF" />
+                                  <Text style={styles.confirmSigBtnText}>Ký xác nhận đã nhận tiền</Text>
+                                </Pressable>
+                              )
+                            )}
+                          </View>
                         </View>
                       </View>
                     )}
                 </View>
               </ScrollView>
-            )}
+            ) : null}
 
-            <Pressable
-              style={styles.modalCloseButton}
-              onPress={() => setViewReportModal({ isOpen: false, booking: null })}
-            >
-              <Text style={styles.modalCloseButtonText}>Đóng</Text>
-            </Pressable>
+            <View style={styles.modalFooterRow}>
+              <Pressable
+                style={styles.modalCancelBtn}
+                onPress={() => {
+                  if (selectedQrPreview) {
+                    setSelectedQrPreview(null);
+                  } else {
+                    setViewReportModal({ isOpen: false, booking: null });
+                  }
+                }}
+                disabled={isUploadingQr}
+              >
+                <Text style={styles.modalCancelBtnText}>{selectedQrPreview ? 'Trở lại' : 'Đóng'}</Text>
+              </Pressable>
+              {selectedQrPreview && verifyQrResult && (verifyQrResult.confidence * 100) >= 70 && (
+                <Pressable
+                  style={[styles.modalSubmitBtn, isUploadingQr && { opacity: 0.7 }]}
+                  onPress={handleConfirmUploadQr}
+                  disabled={isUploadingQr}
+                >
+                  {isUploadingQr ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.modalSubmitBtnText}>Xác nhận tải lên</Text>
+                  )}
+                </Pressable>
+              )}
+            </View>
           </View>
         </View>
       </Modal>
 
       {/* CONFIRM COMPENSATION SIGNATURE MODAL */}
-      {confirmSigModal.isOpen && (
+      {confirmSigModal.isOpen ? (
         <Modal
           visible={confirmSigModal.isOpen}
           transparent
@@ -1324,7 +1603,8 @@ export default function HistoryScreen() {
             </View>
           </View>
         </Modal>
-      )}
+      ) : null}
+
     </View>
   );
 }
@@ -2064,5 +2344,151 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  handoverSignedBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    backgroundColor: '#ECFDF5',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  handoverSignedText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  handoverWarningBox: {
+    padding: 10,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  handoverWarningText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#B45309',
+  },
+  verifyAiBtn: {
+    backgroundColor: '#4F46E5',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  verifyAiBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  verifyProgressContainer: {
+    width: '100%',
+    paddingHorizontal: 8,
+  },
+  verifyProgressStep: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4338CA',
+  },
+  verifyProgressPercent: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4338CA',
+  },
+  verifyProgressBarBg: {
+    width: '100%',
+    height: 8,
+    backgroundColor: '#E0E7FF',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  verifyProgressBarFill: {
+    height: '100%',
+    backgroundColor: '#4F46E5',
+    borderRadius: 4,
+  },
+  verifyErrorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+    borderWidth: 1,
+    padding: 10,
+    borderRadius: 8,
+    width: '100%',
+  },
+  verifyErrorText: {
+    fontSize: 12,
+    color: '#DC2626',
+    flex: 1,
+  },
+  verifyResultBox: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E0E7FF',
+    borderWidth: 1,
+    padding: 12,
+    borderRadius: 12,
+    gap: 8,
+  },
+  verifyResultHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderColor: '#F1F5F9',
+    paddingBottom: 8,
+  },
+  verifyResultTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  confidenceBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  confidenceBadgeText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  reasonBox: {
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  reasonText: {
+    fontSize: 12,
+    color: '#334155',
+  },
+  lowConfidenceAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+    borderWidth: 1,
+    padding: 8,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  lowConfidenceAlertText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#B91C1C',
+    flex: 1,
   },
 });
