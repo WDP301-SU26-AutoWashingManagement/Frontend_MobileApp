@@ -95,12 +95,14 @@ export interface Booking {
       service_name: string;
       service_price: number;
       duration_minutes: number;
+      is_automated?: boolean;
     };
     service_id?: {
       _id: string;
       service_name: string;
       service_price: number;
       duration_minutes: number;
+      is_automated?: boolean;
     };
     service_package?: {
       _id: string;
@@ -191,7 +193,8 @@ class BookingService {
           try {
             const refreshToken = await this.getRefreshToken();
             if (!refreshToken) {
-              throw new Error('No refresh token available');
+              this.isRefreshing = false;
+              return Promise.reject(error);
             }
 
             const response = await this.axiosInstance.post('/auth/refresh', { refreshToken });

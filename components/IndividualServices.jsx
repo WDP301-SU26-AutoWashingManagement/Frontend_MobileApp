@@ -12,11 +12,13 @@ import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import serviceService from '../services/serviceService';
 import serviceGroupService from '../services/serviceGroupService';
+import { useAuth } from '../hooks/useAuthService';
 
 const { width } = Dimensions.get('window');
 
 export default function IndividualServices() {
   const router = useRouter();
+  const { isAuthenticated } = useAuth();
   const [services, setServices] = useState([]);
   const [serviceGroups, setServiceGroups] = useState([]);
   const [activeGroupId, setActiveGroupId] = useState('all');
@@ -166,7 +168,13 @@ export default function IndividualServices() {
 
                       <Pressable 
                         style={({ pressed }) => [styles.bookBtn, pressed && { opacity: 0.7 }]}
-                        onPress={() => router.push('/(tabs)/bookings')}
+                        onPress={() => {
+                          if (isAuthenticated) {
+                            router.push('/(tabs)/bookings');
+                          } else {
+                            router.push('/(tabs)/auth');
+                          }
+                        }}
                       >
                         <Text style={styles.bookBtnText}>Đặt lịch</Text>
                       </Pressable>

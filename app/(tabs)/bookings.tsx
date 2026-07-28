@@ -97,6 +97,11 @@ export default function BookingsScreen() {
   }, [user]);
 
   const fetchBookings = async () => {
+    if (!user) {
+      setBookings([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       const [list, fetchedModels, fetchedMakes] = await Promise.all([

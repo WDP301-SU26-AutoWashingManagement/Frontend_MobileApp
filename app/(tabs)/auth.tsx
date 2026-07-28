@@ -75,6 +75,13 @@ export default function TabTwoScreen() {
   const [forgotVisible, setForgotVisible] = useState(false);
   const [forgotStep, setForgotStep] = useState<ForgotPasswordStep>('email');
   const [forgotForm, setForgotForm] = useState(FORGOT_PASSWORD_INITIAL_STATE);
+
+  // Password visibility states
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+
   const {
     login: authLogin,
     register: authRegister,
@@ -90,7 +97,7 @@ export default function TabTwoScreen() {
   const isLogin = mode === 'login';
   const isExpoGo = Constants.appOwnership === 'expo';
   const showGoogleLogin = FEATURES.ENABLE_GOOGLE_LOGIN && Platform.OS !== 'web';
-  const projectNameForProxy = '@thai5236/AutoWash';
+  const projectNameForProxy = '@thai5236/HybridWash';
   const returnUrl = makeRedirectUri({ path: 'oauthredirect' });
   let proxyRedirectUri = returnUrl;
   if (isExpoGo) {
@@ -335,7 +342,7 @@ export default function TabTwoScreen() {
       if (__DEV__) {
         try {
           Alert.alert('Incoming deep link', url);
-        } catch {}
+        } catch { }
       }
     };
 
@@ -348,10 +355,6 @@ export default function TabTwoScreen() {
 
   return (
     <View style={styles.screen}>
-      {/* Background Glows */}
-      <View style={styles.glowTopLeft} />
-      <View style={styles.glowBottomRight} />
-
       <KeyboardAvoidingView
         style={styles.keyboardWrap}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -359,79 +362,84 @@ export default function TabTwoScreen() {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled">
-          {/* Header with Brand */}
-          <View style={styles.headerSection}>
-            <View style={styles.brandContainer}>
+
+          {/* Top Curved Figma-style Header */}
+          <View style={styles.headerBackground}>
+            {/* Soft Blue and Slate Blue Bubble Shapes */}
+            <View style={styles.blueBubble} />
+            <View style={styles.darkBubble} />
+
+            <View style={styles.logoWrapper}>
               <Image
                 source={require('@/assets/images/logo2.png')}
-                style={styles.brandLogo}
+                style={styles.logoImage}
                 contentFit="contain"
               />
-              <View>
-                <Text style={styles.brandTitle}>
-                  Hybrid<Text style={styles.brandAccent}>Wash</Text>
-                </Text>
-                <Text style={styles.brandSubtitle}>Rửa xe thông minh</Text>
-              </View>
             </View>
           </View>
 
-          {/* Promo Panel */}
-          <View style={[styles.promoPanel, { marginBottom: 16 }]}>
-            <View style={styles.promoGlow} />
-            <View style={styles.promoContent}>
-              <View style={styles.promoBadge}>
-                <MaterialCommunityIcons name="gift-outline" size={14} color="#A5F3FC" />
-                <Text style={styles.promoBadgeText}>Ưu đãi thành viên</Text>
-              </View>
-
-              <Text style={styles.promoTitle}>
-                {isLogin ? AUTH_PROMO_COPY.loginTitle : AUTH_PROMO_COPY.registerTitle}
-                {'\n'}
-                <Text style={styles.promoHighlight}>
-                  {isLogin ? AUTH_PROMO_COPY.loginHighlight : AUTH_PROMO_COPY.registerHighlight}
-                </Text>
-              </Text>
-
-              <Text style={styles.promoDesc}>
-                {isLogin ? AUTH_PROMO_COPY.loginDesc : AUTH_PROMO_COPY.registerDesc}
-              </Text>
-            </View>
+          {/* Welcome Titles */}
+          <View style={styles.welcomeSection}>
+            <Text style={styles.welcomeTitle}>
+              {isLogin ? 'Chào mừng trở lại!' : ""}
+            </Text>
+            <Text style={styles.welcomeSubtitle}>
+              {isLogin
+                ? 'Đăng nhập vào tài khoản của bạn'
+                : 'Đăng ký tài khoản để sử dụng các tính năng'}
+            </Text>
           </View>
 
-          {/* Form Card */}
+          {/* Form Content */}
           <View style={styles.formCard}>
-            {/* Login Form */}
+            {isLogin ? (
+              /* LOGIN FORM */
               <View style={styles.formBlock}>
+                {/* Email field */}
                 <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Email</Text>
-                  <TextInput
-                    value={loginForm.email}
-                    onChangeText={(email) => setLoginForm((prev) => ({ ...prev, email }))}
-                    placeholder="ban@email.com"
-                    placeholderTextColor="#9CA3AF"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoComplete="email"
-                    editable={!loading}
-                    style={styles.input}
-                  />
+                  <Text style={styles.inputLabel}>Email</Text>
+                  <View style={styles.inputWrapper}>
+                    <MaterialCommunityIcons name="email-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <TextInput
+                      value={loginForm.email}
+                      onChangeText={(email) => setLoginForm((prev) => ({ ...prev, email }))}
+                      placeholder="ban@email.com"
+                      placeholderTextColor="#9CA3AF"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoComplete="email"
+                      editable={!loading}
+                      style={styles.textInput}
+                    />
+                  </View>
                 </View>
 
+                {/* Password field */}
                 <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Mật khẩu</Text>
-                  <TextInput
-                    value={loginForm.password}
-                    onChangeText={(password) => setLoginForm((prev) => ({ ...prev, password }))}
-                    placeholder="••••••••"
-                    placeholderTextColor="#9CA3AF"
-                    secureTextEntry
-                    autoComplete="password"
-                    editable={!loading}
-                    style={styles.input}
-                  />
+                  <Text style={styles.inputLabel}>Mật khẩu</Text>
+                  <View style={styles.inputWrapper}>
+                    <MaterialCommunityIcons name="lock-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <TextInput
+                      value={loginForm.password}
+                      onChangeText={(password) => setLoginForm((prev) => ({ ...prev, password }))}
+                      placeholder="••••••••"
+                      placeholderTextColor="#9CA3AF"
+                      secureTextEntry={!showPassword}
+                      autoComplete="password"
+                      editable={!loading}
+                      style={styles.textInput}
+                    />
+                    <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}>
+                      <MaterialCommunityIcons
+                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={20}
+                        color="#9CA3AF"
+                      />
+                    </Pressable>
+                  </View>
                 </View>
 
+                {/* Remember & Forgot Password Row */}
                 <View style={styles.checkboxRow}>
                   <Pressable
                     onPress={() =>
@@ -441,7 +449,7 @@ export default function TabTwoScreen() {
                     disabled={loading}>
                     <View style={[styles.checkbox, loginForm.remember && styles.checkboxChecked]}>
                       {loginForm.remember ? (
-                        <MaterialCommunityIcons name="check" size={12} color="#0F172A" />
+                        <MaterialCommunityIcons name="check" size={12} color="#FFFFFF" />
                       ) : null}
                     </View>
                     <Text style={styles.rememberLabel}>Ghi nhớ đăng nhập</Text>
@@ -452,6 +460,7 @@ export default function TabTwoScreen() {
                   </Pressable>
                 </View>
 
+                {/* Login Button */}
                 <Pressable
                   onPress={handleLoginSubmit}
                   disabled={loading}
@@ -461,24 +470,43 @@ export default function TabTwoScreen() {
                     loading && styles.primaryButtonDisabled,
                   ]}>
                   <Text style={styles.primaryButtonText}>
-                    {loading ? 'Đang xử lý...' : 'Đăng nhập'}
+                    {loading ? 'Đang xử lý...' : 'ĐĂNG NHẬP'}
                   </Text>
                 </Pressable>
 
+                {/* Social Login Row */}
                 {showGoogleLogin ? (
                   <>
                     <View style={styles.dividerRow}>
                       <View style={styles.dividerLine} />
-                      <Text style={styles.dividerText}>hoặc</Text>
+                      <Text style={styles.dividerText}>Hoặc đăng nhập với</Text>
                       <View style={styles.dividerLine} />
                     </View>
 
-                    <GoogleSignInButton
-                      onPress={handleGoogleLogin}
-                      disabled={!request || loading}
-                      loading={loading}
-                      label={!request ? 'Đang chuẩn bị...' : 'Đăng nhập với Google'}
-                    />
+                    <View style={styles.socialRow}>
+                      {/* <Pressable
+                        style={styles.socialButton}
+                        onPress={() => Alert.alert('Thông tin', 'Đăng nhập bằng Facebook sẽ sớm ra mắt!')}>
+                        <MaterialCommunityIcons name="facebook" size={24} color="#1877F2" />
+                      </Pressable> */}
+
+                      <Pressable
+                        style={styles.socialButton}
+                        onPress={handleGoogleLogin}
+                        disabled={!request || loading}>
+                        <Image
+                          source={require('@/assets/images/google_logo.png')}
+                          style={{ width: 24, height: 24 }}
+                          contentFit="contain"
+                        />
+                      </Pressable>
+                      {/* 
+                      <Pressable
+                        style={styles.socialButton}
+                        onPress={() => Alert.alert('Thông tin', 'Đăng nhập bằng Apple sẽ sớm ra mắt!')}>
+                        <MaterialCommunityIcons name="apple" size={24} color="#000000" />
+                      </Pressable> */}
+                    </View>
                   </>
                 ) : FEATURES.ENABLE_GOOGLE_LOGIN ? (
                   <Text style={styles.googleHint}>
@@ -486,8 +514,116 @@ export default function TabTwoScreen() {
                   </Text>
                 ) : null}
               </View>
+            ) : (
+              /* REGISTER FORM */
+              <View style={styles.formBlock}>
+                {/* Full name field */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.inputLabel}>Họ và tên</Text>
+                  <View style={styles.inputWrapper}>
+                    <MaterialCommunityIcons name="account-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <TextInput
+                      value={registerForm.name}
+                      onChangeText={(name) => setRegisterForm((prev) => ({ ...prev, name }))}
+                      placeholder="Họ và tên của bạn"
+                      placeholderTextColor="#9CA3AF"
+                      autoCapitalize="words"
+                      editable={!loading}
+                      style={styles.textInput}
+                    />
+                  </View>
+                </View>
+
+                {/* Email field */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.inputLabel}>Email</Text>
+                  <View style={styles.inputWrapper}>
+                    <MaterialCommunityIcons name="email-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <TextInput
+                      value={registerForm.email}
+                      onChangeText={(email) => setRegisterForm((prev) => ({ ...prev, email }))}
+                      placeholder="ban@email.com"
+                      placeholderTextColor="#9CA3AF"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoComplete="email"
+                      editable={!loading}
+                      style={styles.textInput}
+                    />
+                  </View>
+                </View>
+
+                {/* Password field */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.inputLabel}>Mật khẩu</Text>
+                  <View style={styles.inputWrapper}>
+                    <MaterialCommunityIcons name="lock-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <TextInput
+                      value={registerForm.password}
+                      onChangeText={(password) => setRegisterForm((prev) => ({ ...prev, password }))}
+                      placeholder="••••••••"
+                      placeholderTextColor="#9CA3AF"
+                      secureTextEntry={!showPassword}
+                      autoComplete="new-password"
+                      editable={!loading}
+                      style={styles.textInput}
+                    />
+                    <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}>
+                      <MaterialCommunityIcons
+                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={20}
+                        color="#9CA3AF"
+                      />
+                    </Pressable>
+                  </View>
+                </View>
+
+                {/* Confirm Password field */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.inputLabel}>Xác nhận mật khẩu</Text>
+                  <View style={styles.inputWrapper}>
+                    <MaterialCommunityIcons name="lock-check-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <TextInput
+                      value={registerForm.confirmPassword}
+                      onChangeText={(confirmPassword) => setRegisterForm((prev) => ({ ...prev, confirmPassword }))}
+                      placeholder="••••••••"
+                      placeholderTextColor="#9CA3AF"
+                      secureTextEntry={!showConfirmPassword}
+                      autoComplete="new-password"
+                      editable={!loading}
+                      style={styles.textInput}
+                    />
+                    <Pressable onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeButton}>
+                      <MaterialCommunityIcons
+                        name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={20}
+                        color="#9CA3AF"
+                      />
+                    </Pressable>
+                  </View>
+                </View>
+
+                {/* Create Account Button */}
+                <Pressable
+                  onPress={handleRegisterSubmit}
+                  disabled={loading}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    pressed && !loading && styles.primaryButtonPressed,
+                    loading && styles.primaryButtonDisabled,
+                  ]}>
+                  <Text style={styles.primaryButtonText}>
+                    {loading ? 'Đang xử lý...' : 'TẠO TÀI KHOẢN'}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
+            {/* Footer Toggle Mode Link */}
+
           </View>
 
+          {/* Forgot Password Modal */}
           <Modal visible={forgotVisible} transparent animationType="fade" onRequestClose={closeForgotPassword}>
             <View style={styles.modalOverlay}>
               <Pressable style={styles.modalBackdrop} onPress={closeForgotPassword} />
@@ -508,7 +644,7 @@ export default function TabTwoScreen() {
                       </Text>
                     </View>
                     <Pressable onPress={closeForgotPassword} style={styles.modalCloseButton}>
-                      <MaterialCommunityIcons name="close" size={18} color="#0F172A" />
+                      <MaterialCommunityIcons name="close" size={18} color="#1E293B" />
                     </Pressable>
                   </View>
 
@@ -516,7 +652,7 @@ export default function TabTwoScreen() {
                     {[
                       { key: 'email', label: 'Email' },
                       { key: 'otp', label: 'OTP' },
-                      { key: 'reset', label: 'Mật khẩu mới' },
+                      { key: 'reset', label: 'Mật khẩu' },
                     ].map((step, index) => {
                       const active = forgotStep === step.key;
                       const completed =
@@ -543,25 +679,30 @@ export default function TabTwoScreen() {
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.modalBody}>
+
+                    {/* STEP 1: Enter Email */}
                     {forgotStep === 'email' ? (
                       <View style={styles.modalForm}>
                         <View style={styles.fieldGroup}>
-                          <Text style={styles.label}>Email tài khoản</Text>
-                          <TextInput
-                            value={forgotForm.email}
-                            onChangeText={(email) => setForgotForm((prev) => ({ ...prev, email }))}
-                            placeholder="ban@email.com"
-                            placeholderTextColor="#9CA3AF"
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                            autoComplete="email"
-                            editable={!loading}
-                            style={styles.input}
-                          />
+                          <Text style={styles.inputLabel}>Email tài khoản</Text>
+                          <View style={styles.inputWrapper}>
+                            <MaterialCommunityIcons name="email-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                            <TextInput
+                              value={forgotForm.email}
+                              onChangeText={(email) => setForgotForm((prev) => ({ ...prev, email }))}
+                              placeholder="ban@email.com"
+                              placeholderTextColor="#9CA3AF"
+                              keyboardType="email-address"
+                              autoCapitalize="none"
+                              autoComplete="email"
+                              editable={!loading}
+                              style={styles.textInput}
+                            />
+                          </View>
                         </View>
 
                         <View style={styles.helperPanel}>
-                          <MaterialCommunityIcons name="email-outline" size={18} color="#0891B2" />
+                          <MaterialCommunityIcons name="email-outline" size={18} color="#0EA5E9" />
                           <Text style={styles.helperPanelText}>
                             Hệ thống sẽ gửi OTP đến email này nếu tài khoản tồn tại.
                           </Text>
@@ -578,42 +719,50 @@ export default function TabTwoScreen() {
                           {loading ? (
                             <ActivityIndicator color="#FFFFFF" />
                           ) : (
-                            <Text style={styles.primaryButtonText}>Gửi mã OTP</Text>
+                            <Text style={styles.primaryButtonText}>GỬI MÃ OTP</Text>
                           )}
                         </Pressable>
                       </View>
                     ) : null}
 
+                    {/* STEP 2: Verify OTP */}
                     {forgotStep === 'otp' ? (
                       <View style={styles.modalForm}>
                         <View style={styles.fieldGroup}>
-                          <Text style={styles.label}>Email</Text>
-                          <TextInput
-                            value={forgotForm.email}
-                            editable={false}
-                            style={[styles.input, styles.inputDisabled]}
-                          />
+                          <Text style={styles.inputLabel}>Email</Text>
+                          <View style={[styles.inputWrapper, styles.inputDisabled]}>
+                            <MaterialCommunityIcons name="email-outline" size={20} color="#64748B" style={styles.inputIcon} />
+                            <TextInput
+                              value={forgotForm.email}
+                              editable={false}
+                              style={[styles.textInput, { color: '#64748B' }]}
+                            />
+                          </View>
                         </View>
 
                         <View style={styles.fieldGroup}>
-                          <Text style={styles.label}>Mã OTP</Text>
-                          <TextInput
-                            value={forgotForm.otp}
-                            onChangeText={(otp) => setForgotForm((prev) => ({ ...prev, otp }))}
-                            placeholder="123456"
-                            placeholderTextColor="#9CA3AF"
-                            keyboardType="number-pad"
-                            maxLength={6}
-                            autoComplete="one-time-code"
-                            editable={!loading}
-                            style={styles.input}
-                          />
+                          <Text style={styles.inputLabel}>Mã OTP</Text>
+                          <View style={styles.inputWrapper}>
+                            <MaterialCommunityIcons name="numeric" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                            <TextInput
+                              value={forgotForm.otp}
+                              onChangeText={(otp) => setForgotForm((prev) => ({ ...prev, otp }))}
+                              placeholder="123456"
+                              placeholderTextColor="#9CA3AF"
+                              keyboardType="number-pad"
+                              maxLength={6}
+                              autoComplete="one-time-code"
+                              editable={!loading}
+                              style={styles.textInput}
+                            />
+                          </View>
                         </View>
 
                         <View style={styles.inlineActions}>
                           <Pressable onPress={handleResendOtp} disabled={loading} style={styles.secondaryButton}>
-                            <Text style={styles.secondaryButtonText}>Gửi lại OTP</Text>
+                            <Text style={styles.secondaryButtonText}>GỬI LẠI OTP</Text>
                           </Pressable>
+
                           <Pressable
                             onPress={handleVerifyOtpSubmit}
                             disabled={loading}
@@ -626,63 +775,66 @@ export default function TabTwoScreen() {
                             {loading ? (
                               <ActivityIndicator color="#FFFFFF" />
                             ) : (
-                              <Text style={styles.primaryButtonText}>Xác minh</Text>
+                              <Text style={styles.primaryButtonText}>XÁC MINH</Text>
                             )}
                           </Pressable>
                         </View>
                       </View>
                     ) : null}
 
+                    {/* STEP 3: Reset Password */}
                     {forgotStep === 'reset' ? (
                       <View style={styles.modalForm}>
                         <View style={styles.fieldGroup}>
-                          <Text style={styles.label}>Email</Text>
-                          <TextInput
-                            value={forgotForm.email}
-                            editable={false}
-                            style={[styles.input, styles.inputDisabled]}
-                          />
+                          <Text style={styles.inputLabel}>Mật khẩu mới</Text>
+                          <View style={styles.inputWrapper}>
+                            <MaterialCommunityIcons name="lock-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                            <TextInput
+                              value={forgotForm.newPassword}
+                              onChangeText={(newPassword) =>
+                                setForgotForm((prev) => ({ ...prev, newPassword }))
+                              }
+                              placeholder="••••••••"
+                              placeholderTextColor="#9CA3AF"
+                              secureTextEntry={!showNewPassword}
+                              autoComplete="new-password"
+                              editable={!loading}
+                              style={styles.textInput}
+                            />
+                            <Pressable onPress={() => setShowNewPassword(!showNewPassword)} style={styles.eyeButton}>
+                              <MaterialCommunityIcons
+                                name={showNewPassword ? 'eye-off-outline' : 'eye-outline'}
+                                size={20}
+                                color="#9CA3AF"
+                              />
+                            </Pressable>
+                          </View>
                         </View>
 
                         <View style={styles.fieldGroup}>
-                          <Text style={styles.label}>Mã OTP</Text>
-                          <TextInput
-                            value={forgotForm.otp}
-                            editable={false}
-                            style={[styles.input, styles.inputDisabled]}
-                          />
-                        </View>
-
-                        <View style={styles.fieldGroup}>
-                          <Text style={styles.label}>Mật khẩu mới</Text>
-                          <TextInput
-                            value={forgotForm.newPassword}
-                            onChangeText={(newPassword) =>
-                              setForgotForm((prev) => ({ ...prev, newPassword }))
-                            }
-                            placeholder="••••••••"
-                            placeholderTextColor="#9CA3AF"
-                            secureTextEntry
-                            autoComplete="new-password"
-                            editable={!loading}
-                            style={styles.input}
-                          />
-                        </View>
-
-                        <View style={styles.fieldGroup}>
-                          <Text style={styles.label}>Nhập lại mật khẩu mới</Text>
-                          <TextInput
-                            value={forgotForm.confirmPassword}
-                            onChangeText={(confirmPassword) =>
-                              setForgotForm((prev) => ({ ...prev, confirmPassword }))
-                            }
-                            placeholder="••••••••"
-                            placeholderTextColor="#9CA3AF"
-                            secureTextEntry
-                            autoComplete="new-password"
-                            editable={!loading}
-                            style={styles.input}
-                          />
+                          <Text style={styles.inputLabel}>Nhập lại mật khẩu mới</Text>
+                          <View style={styles.inputWrapper}>
+                            <MaterialCommunityIcons name="lock-check-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                            <TextInput
+                              value={forgotForm.confirmPassword}
+                              onChangeText={(confirmPassword) =>
+                                setForgotForm((prev) => ({ ...prev, confirmPassword }))
+                              }
+                              placeholder="••••••••"
+                              placeholderTextColor="#9CA3AF"
+                              secureTextEntry={!showConfirmNewPassword}
+                              autoComplete="new-password"
+                              editable={!loading}
+                              style={styles.textInput}
+                            />
+                            <Pressable onPress={() => setShowConfirmNewPassword(!showConfirmNewPassword)} style={styles.eyeButton}>
+                              <MaterialCommunityIcons
+                                name={showConfirmNewPassword ? 'eye-off-outline' : 'eye-outline'}
+                                size={20}
+                                color="#9CA3AF"
+                              />
+                            </Pressable>
+                          </View>
                         </View>
 
                         <Pressable
@@ -696,7 +848,7 @@ export default function TabTwoScreen() {
                           {loading ? (
                             <ActivityIndicator color="#FFFFFF" />
                           ) : (
-                            <Text style={styles.primaryButtonText}>Đặt lại mật khẩu</Text>
+                            <Text style={styles.primaryButtonText}>ĐẶT LẠI MẬT KHẨU</Text>
                           )}
                         </Pressable>
                       </View>
@@ -711,7 +863,7 @@ export default function TabTwoScreen() {
           <View style={styles.benefitsSection}>
             <View style={styles.benefitsHeader}>
               <View style={styles.benefitsIcon}>
-                <MaterialCommunityIcons name="check-all" size={18} color="#0EA5B7" />
+                <MaterialCommunityIcons name="check-all" size={18} color="#0EA5E9" />
               </View>
               <Text style={styles.benefitsTitle}>Tại sao chọn HybridWash?</Text>
             </View>
@@ -725,6 +877,7 @@ export default function TabTwoScreen() {
               ))}
             </View>
           </View>
+
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -734,8 +887,7 @@ export default function TabTwoScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#0F172A',
-    paddingTop: Platform.OS === 'ios' ? 50 : 10,
+    backgroundColor: '#FFFFFF',
   },
 
   keyboardWrap: {
@@ -743,494 +895,206 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 14,
+    paddingBottom: 24,
   },
 
-  /* Background Glows */
-  glowTopLeft: {
+  /* Top Figma-style Curved Header */
+  headerBackground: {
+    height: 190,
+    backgroundColor: '#FFFFFF',
+    position: 'relative',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: Platform.OS === 'ios' ? 40 : 10,
+  },
+
+  blueBubble: {
+    position: 'absolute',
+    top: -50,
+    left: -70,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#E0F2FE', // Light blue shape
+    opacity: 0.8,
+  },
+
+  darkBubble: {
     position: 'absolute',
     top: -80,
-    left: -80,
-    width: 240,
-    height: 240,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6, 182, 212, 0.25)',
-    opacity: 1,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: '#78909C', // Slate grey curved shape
+    opacity: 0.9,
   },
 
-  glowBottomRight: {
-    position: 'absolute',
-    bottom: -100,
-    right: -80,
-    width: 280,
-    height: 280,
-    borderRadius: 999,
-    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-    opacity: 1,
-  },
-
-  /* Header Section */
-  headerSection: {
-    paddingVertical: 8,
-    paddingBottom: 12,
-  },
-
-  brandContainer: {
-    flexDirection: 'row',
+  logoWrapper: {
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'center',
+    zIndex: 10,
   },
 
-  brandLogo: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: 'rgba(6, 182, 212, 0.3)',
+  logoImage: {
+    width: 180,
+    height: 180,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
 
-  brandTitle: {
+  logoText: {
     fontSize: 22,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: '#0284C7',
+    marginTop: 8,
+    letterSpacing: 1.5,
+  },
+
+  /* Welcome Section */
+  welcomeSection: {
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 20,
+  },
+
+  welcomeTitle: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#1E293B',
+    textAlign: 'center',
     letterSpacing: 0.3,
   },
 
-  brandAccent: {
-    color: '#06B6D4',
-  },
-
-  brandSubtitle: {
-    fontSize: 12,
-    color: 'rgba(200, 215, 230, 0.9)',
-    marginTop: 2,
-  },
-
-  /* Promo Panel */
-  promoPanel: {
-    borderRadius: 20,
-    padding: 16,
-    backgroundColor: '#1a2f3f',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.3)',
-    overflow: 'hidden',
-  },
-
-  promoGlow: {
-    position: 'absolute',
-    top: -40,
-    right: -40,
-    width: 160,
-    height: 160,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6, 182, 212, 0.25)',
-  },
-
-  promoContent: {
-    gap: 10,
-  },
-
-  promoBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6, 182, 212, 0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.4)',
-  },
-
-  promoBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-
-  promoTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    lineHeight: 28,
-  },
-
-  promoHighlight: {
-    color: '#06B6D4',
-  },
-
-  promoDesc: {
+  welcomeSubtitle: {
     fontSize: 13,
-    color: '#B3E5FC',
-    lineHeight: 19,
-    fontWeight: '500',
+    color: '#64748B',
+    marginTop: 6,
+    textAlign: 'center',
+    fontWeight: '600',
+    lineHeight: 18,
   },
 
-  /* Form Card */
+  /* Form Card Container */
   formCard: {
-    borderRadius: 20,
-    padding: 14,
-    backgroundColor: '#FFFFFF',
-    gap: 12,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 8,
+    paddingHorizontal: 20,
+    gap: 16,
   },
 
-  /* Segmented Control */
-  segmentedControl: {
-    flexDirection: 'row',
-    padding: 4,
-    borderRadius: 14,
-    backgroundColor: '#F0F4F8',
+  formBlock: {
     gap: 4,
   },
 
-  segmentButton: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  segmentButtonActive: {
-    backgroundColor: '#06B6D4',
-  },
-
-  segmentText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#64748B',
-  },
-
-  segmentTextActive: {
-    color: '#FFFFFF',
-  },
-
-  /* Form Block */
-  formBlock: {
-    gap: 10,
-  },
-
   fieldGroup: {
-    gap: 6,
+    gap: 4,
   },
 
-  label: {
-    color: '#1F2937',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+  inputLabel: {
+    color: '#475569',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 4,
   },
 
-  input: {
-    minHeight: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
-    paddingHorizontal: 12,
+  inputWrapper: {
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6', // Sleek light grey input field
+    borderWidth: 1.5,
+    borderColor: '#F3F4F6',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    color: '#111827',
-    fontSize: 14,
+    paddingHorizontal: 16,
+    marginBottom: 12,
   },
 
-  inputText: {
-    flex: 1,
-    color: '#111827',
-    fontSize: 14,
-    paddingVertical: 10,
+  inputDisabled: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
   },
 
   inputIcon: {
-    marginRight: 8,
+    marginRight: 10,
   },
 
-  helperText: {
-    color: '#9CA3AF',
-    fontSize: 11,
-    marginTop: 2,
-  },
-
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginVertical: 2,
-  },
-
-  dividerLine: {
+  textInput: {
     flex: 1,
-    height: 1,
-    backgroundColor: '#E5E7EB',
+    height: '100%',
+    color: '#1E293B',
+    fontSize: 14,
+    fontWeight: '500',
+    paddingVertical: 0,
   },
 
-  dividerText: {
-    fontSize: 11,
-    color: '#94A3B8',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-
-  googleHint: {
-    marginTop: 12,
-    fontSize: 12,
-    color: '#94A3B8',
-    textAlign: 'center',
-  },
-
-  errorText: {
-    color: '#EF4444',
-    fontSize: 11,
-    marginTop: 2,
+  eyeButton: {
+    padding: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   checkboxRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 2,
+    marginTop: 4,
+    marginBottom: 16,
   },
 
   rememberContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    flex: 1,
+    gap: 8,
   },
 
   checkbox: {
-    width: 16,
-    height: 16,
-    borderRadius: 5,
+    width: 18,
+    height: 18,
+    borderRadius: 6,
     borderWidth: 1.5,
-    borderColor: '#D1D5DB',
+    borderColor: '#CBD5E1',
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   checkboxChecked: {
-    backgroundColor: '#06B6D4',
-    borderColor: '#06B6D4',
+    backgroundColor: '#0EA5E9',
+    borderColor: '#0EA5E9',
   },
 
   rememberLabel: {
-    color: '#4B5563',
+    color: '#64748B',
     fontSize: 12,
     fontWeight: '600',
   },
 
   forgotLink: {
-    color: '#06B6D4',
+    color: '#0EA5E9',
     fontSize: 12,
     fontWeight: '700',
   },
 
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 16,
-    backgroundColor: 'rgba(2, 6, 23, 0.68)',
-  },
-
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-  },
-
-  modalKeyboardWrap: {
-    width: '100%',
-  },
-
-  modalCard: {
-    borderRadius: 24,
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    gap: 14,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.24,
-    shadowRadius: 30,
-    elevation: 12,
-  },
-
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-
-  modalTitle: {
-    color: '#0F172A',
-    fontSize: 20,
-    fontWeight: '900',
-  },
-
-  modalSubtitle: {
-    color: '#64748B',
-    fontSize: 12,
-    marginTop: 4,
-    lineHeight: 18,
-  },
-
-  modalCloseButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 999,
-    backgroundColor: '#E2E8F0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingTop: 4,
-  },
-
-  stepItem: {
-    flex: 1,
-    alignItems: 'center',
-    position: 'relative',
-  },
-
-  stepDot: {
-    width: 26,
-    height: 26,
-    borderRadius: 999,
-    backgroundColor: '#E2E8F0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-  },
-
-  stepDotActive: {
-    backgroundColor: '#06B6D4',
-  },
-
-  stepDotDone: {
-    backgroundColor: '#0EA5E9',
-  },
-
-  stepNumber: {
-    color: '#64748B',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-
-  stepNumberActive: {
-    color: '#FFFFFF',
-  },
-
-  stepLabel: {
-    color: '#94A3B8',
-    fontSize: 10,
-    marginTop: 8,
-    textAlign: 'center',
-    fontWeight: '700',
-  },
-
-  stepLabelActive: {
-    color: '#0F172A',
-  },
-
-  stepLine: {
-    position: 'absolute',
-    top: 12,
-    left: '50%',
-    right: '-50%',
-    height: 2,
-    backgroundColor: '#CBD5E1',
-    zIndex: 0,
-  },
-
-  stepLineDone: {
-    backgroundColor: '#0EA5E9',
-  },
-
-  modalBody: {
-    gap: 12,
-    paddingTop: 4,
-    paddingBottom: 4,
-  },
-
-  modalForm: {
-    gap: 12,
-  },
-
-  helperPanel: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: '#ECFEFF',
-    borderWidth: 1,
-    borderColor: '#A5F3FC',
-  },
-
-  helperPanelText: {
-    flex: 1,
-    color: '#0F172A',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-
-  inputDisabled: {
-    backgroundColor: '#F1F5F9',
-    color: '#64748B',
-  },
-
-  inlineActions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-
-  secondaryButton: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-
-  secondaryButtonText: {
-    color: '#0F172A',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-
-  inlinePrimaryButton: {
-    flex: 1,
-    marginTop: 0,
-  },
-
+  /* Action Buttons */
   primaryButton: {
-    minHeight: 44,
-    borderRadius: 12,
-    backgroundColor: '#06B6D4',
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#0EA5E9',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 4,
-    shadowColor: '#06B6D4',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowColor: '#0EA5E9',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 3,
+    marginTop: 6,
   },
 
   primaryButtonPressed: {
@@ -1245,19 +1109,214 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0.3,
+    fontWeight: '900',
+    letterSpacing: 0.8,
   },
 
-  /* Benefits Section */
+  /* Social Sign-In Divider & Buttons */
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+
+  dividerLine: {
+    flex: 1,
+    height: 1.5,
+    backgroundColor: '#F1F5F9',
+  },
+
+  dividerText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '800',
+    marginHorizontal: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  socialRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginBottom: 8,
+  },
+
+  socialButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+
+  googleHint: {
+    marginTop: 10,
+    fontSize: 11,
+    color: '#94A3B8',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+
+  /* Footer Links */
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 16,
+  },
+
+  footerText: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+
+  footerLink: {
+    fontSize: 13,
+    color: '#0EA5E9',
+    fontWeight: '800',
+  },
+
+  /* Modal Styles */
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+  },
+
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+
+  modalKeyboardWrap: {
+    width: '100%',
+  },
+
+  modalCard: {
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    paddingBottom: 12,
+  },
+
+  modalTitle: {
+    color: '#1E293B',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+
+  modalSubtitle: {
+    color: '#64748B',
+    fontSize: 12,
+    marginTop: 4,
+    lineHeight: 16,
+    fontWeight: '500',
+  },
+
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  modalBody: {
+    gap: 12,
+    paddingTop: 8,
+  },
+
+  modalForm: {
+    gap: 8,
+  },
+
+  helperPanel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#E0F2FE',
+    marginBottom: 8,
+  },
+
+  helperPanelText: {
+    flex: 1,
+    color: '#0369A1',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+  },
+
+  inlineActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+
+  secondaryButton: {
+    flex: 1,
+    height: 52,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  secondaryButtonText: {
+    color: '#475569',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+
+  inlinePrimaryButton: {
+    flex: 1,
+    marginTop: 0,
+  },
+
+  /* Benefits Panel */
   benefitsSection: {
     borderRadius: 16,
-    padding: 14,
-    backgroundColor: 'rgba(6, 182, 212, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.3)',
-    gap: 10,
-    marginBottom: 8,
+    padding: 16,
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1.5,
+    borderColor: '#E0F2FE',
+    gap: 12,
+    marginHorizontal: 20,
+    marginTop: 8,
+    marginBottom: 16,
   },
 
   benefitsHeader: {
@@ -1270,13 +1329,13 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: 'rgba(6, 182, 212, 0.25)',
+    backgroundColor: '#E0F2FE',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   benefitsTitle: {
-    color: '#FFFFFF',
+    color: '#0369A1',
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 0.3,
@@ -1295,17 +1354,85 @@ const styles = StyleSheet.create({
   benefitDot: {
     width: 6,
     height: 6,
-    borderRadius: 999,
-    backgroundColor: '#06B6D4',
+    borderRadius: 3,
+    backgroundColor: '#0EA5E9',
     marginTop: 6,
     flexShrink: 0,
   },
 
   benefitText: {
     flex: 1,
-    color: '#E0E7FF',
+    color: '#334155',
     fontSize: 12,
     lineHeight: 18,
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+
+  /* Step Indicator styles */
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
+
+  stepItem: {
+    flex: 1,
+    alignItems: 'center',
+    position: 'relative',
+  },
+
+  stepDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+
+  stepDotActive: {
+    backgroundColor: '#0EA5E9',
+  },
+
+  stepDotDone: {
+    backgroundColor: '#10B981',
+  },
+
+  stepNumber: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  stepNumberActive: {
+    color: '#FFFFFF',
+  },
+
+  stepLabel: {
+    color: '#94A3B8',
+    fontSize: 11,
+    marginTop: 6,
+    textAlign: 'center',
+    fontWeight: '700',
+  },
+
+  stepLabelActive: {
+    color: '#1E293B',
+  },
+
+  stepLine: {
+    position: 'absolute',
+    top: 14,
+    left: '50%',
+    right: '-50%',
+    height: 2,
+    backgroundColor: '#E2E8F0',
+    zIndex: 0,
+  },
+
+  stepLineDone: {
+    backgroundColor: '#10B981',
   },
 });

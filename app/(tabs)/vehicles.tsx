@@ -6,6 +6,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import vehicleService, { Vehicle } from '@/services/vehicleService';
 import ModalVehical, { EMPTY_VEHICLE_FORM, VehicleFormState } from '@/components/modalVehical';
+import { useAuth } from '@/hooks/useAuthService';
 
 const CYAN = '#06B6D4';
 const CYAN_LIGHT = 'rgba(6,182,212,0.08)';
@@ -16,6 +17,7 @@ const BG = '#F8FAFC';
 const SURFACE = '#FFFFFF';
 
 export default function VehiclesScreen() {
+  const { user } = useAuth();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -40,6 +42,12 @@ export default function VehiclesScreen() {
   const [makes, setMakes] = useState<any[]>([]);
 
   const loadVehicles = useCallback(async (showLoading = true) => {
+    if (!user) {
+      setVehicles([]);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     if (showLoading) setLoading(true);
     setError(null);
     try {
@@ -61,7 +69,7 @@ export default function VehiclesScreen() {
       if (showLoading) setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => { loadVehicles(); }, [loadVehicles]);
 
