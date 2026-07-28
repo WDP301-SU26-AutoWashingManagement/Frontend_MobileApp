@@ -1208,7 +1208,7 @@ export default function HistoryScreen() {
                   {verifyQrResult && (
                     <View style={styles.verifyResultBox}>
                       <View style={styles.verifyResultHeader}>
-                        <Text style={styles.verifyResultTitle}>Độ tin cậy AI:</Text>
+                        <Text style={styles.verifyResultTitle}>Độ tin cậy:</Text>
                         <View
                           style={[
                             styles.confidenceBadge,
