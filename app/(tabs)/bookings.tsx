@@ -619,7 +619,10 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
         const res = await bookingService.getAvailableSlots(selectedBranchId, selectedDate);
         if (!active) return;
 
-        const mapped = res.map((slot: any) => {
+        const oneHourFromNow = Date.now() + 60 * 60 * 1000;
+        const filtered = res.filter((slot: any) => new Date(slot.scheduled_at).getTime() >= oneHourFromNow);
+
+        const mapped = filtered.map((slot: any) => {
           const d = new Date(slot.scheduled_at);
           const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
           return { timeStr, available_bays: slot.available_bays };
@@ -890,6 +893,15 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
         Alert.alert('Thông báo', 'Vui lòng chọn chi nhánh, phương tiện, ngày và giờ');
         return;
       }
+      
+      const [year, month, day] = selectedDate.split('-').map(Number);
+      const [hour, minute] = selectedTime.split(':').map(Number);
+      const scheduledAtLocal = new Date(year, month - 1, day, hour, minute);
+      const oneHourFromNow = Date.now() + 60 * 60 * 1000;
+      if (scheduledAtLocal.getTime() < oneHourFromNow) {
+        Alert.alert('Thời gian không hợp lệ', 'Vui lòng đặt lịch hẹn trước thời điểm thực hiện ít nhất 1 tiếng.');
+        return;
+      }
     }
     if (step === 2) {
       const hasDefaultWashing = !!washingServiceId;
@@ -939,6 +951,13 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
       const [year, month, day] = selectedDate.split('-').map(Number);
       const [hour, minute] = selectedTime.split(':').map(Number);
       const scheduledAtLocal = new Date(year, month - 1, day, hour, minute);
+
+      const oneHourFromNow = Date.now() + 60 * 60 * 1000;
+      if (scheduledAtLocal.getTime() < oneHourFromNow) {
+        Alert.alert('Thời gian không hợp lệ', 'Vui lòng đặt lịch hẹn trước thời điểm thực hiện ít nhất 1 tiếng.');
+        setSaving(false);
+        return;
+      }
 
       const payload: CreateBookingPayload = {
         branch_id: selectedBranchId,
