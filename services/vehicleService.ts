@@ -119,7 +119,8 @@ class VehicleService {
           try {
             const refreshToken = await this.getRefreshToken();
             if (!refreshToken) {
-              throw new Error('No refresh token available');
+              this.isRefreshing = false;
+              return Promise.reject(error);
             }
 
             const response = await this.axiosInstance.post('/auth/refresh', { refreshToken });

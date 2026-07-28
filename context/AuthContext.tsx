@@ -51,6 +51,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(freshUser);
           } catch (profileErr) {
             console.error('[AuthContext] Failed to fetch fresh profile on start:', profileErr);
+            const stillAuthenticated = await authService.isAuthenticated();
+            if (!stillAuthenticated) {
+              console.log('⚠️ [AuthContext] Session expired or invalid, logging out user');
+              setUser(null);
+              setIsAuthenticated(false);
+            }
           }
         } else {
           console.log('❌ [AuthContext] No authentication found - user needs to login');

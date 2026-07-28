@@ -31,6 +31,13 @@ const ImagePicker: any = require('expo-image-picker');
 
 const { width } = Dimensions.get('window');
 
+const extractPlateFromString = (str: string): string => {
+  if (!str) return '';
+  const regex = /[0-9]{2}[A-Z]{1,2}[-]?\d{3,5}(?:\.\d{2})?/gi;
+  const match = str.match(regex);
+  return match ? match[0].replace(/[^a-zA-Z0-9]/g, '').toUpperCase() : '';
+};
+
 const CYAN = '#06B6D4';
 const PURPLE = '#8B5CF6';
 const GREEN = '#10B981';
@@ -125,7 +132,32 @@ export default function StaffBookingsScreen() {
   } | null>(null);
   const [failureManualPlate, setFailureManualPlate] = useState('');
 
+  const isManualServiceCompleted = (booking: Booking | null) => {
+    if (!booking) return true;
+    const servicesList = booking.services || [];
+    for (const svc of servicesList) {
+      const svcObj = svc.service_id || svc.service;
+      const pkgObj = svc.service_package_id || svc.service_package;
+      const name = svcObj?.service_name || pkgObj?.package_name || pkgObj?.service_name || pkgObj?.name || 'Dịch vụ';
+      const isAutomated =
+        svcObj?.is_automated ||
+        svcObj?.service_name === 'Dịch vụ rửa xe' ||
+        svcObj?.service_name?.toLowerCase() === 'dịch vụ rửa xe' ||
+        name === 'Dịch vụ rửa xe';
+
+      if (!isAutomated && !svc.is_completed) {
+        return false;
+      }
+    }
+    return true;
+  };
+
   const fetchBookings = async () => {
+    if (!user) {
+      setBookings([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       const list = await bookingService.list();
@@ -323,7 +355,7 @@ export default function StaffBookingsScreen() {
         }
         result = await ImagePicker.launchCameraAsync({
           allowsEditing: false,
-          quality: 0.8,
+          quality: 0.2,
         });
       } else {
         const libraryPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -333,7 +365,7 @@ export default function StaffBookingsScreen() {
         }
         result = await ImagePicker.launchImageLibraryAsync({
           allowsEditing: false,
-          quality: 0.8,
+          quality: 0.2,
         });
       }
 
@@ -353,7 +385,7 @@ export default function StaffBookingsScreen() {
 
       const response = await bookingService.checkinWithCamera(imageUri, mimeType, fileName);
 
-      if (response.success) {
+      if (response && response.success) {
         // Double check if the checked-in booking is the one we wanted, or another one
         const scannedId = response.appointment_id || '';
         const selectedId = booking._id;
@@ -380,12 +412,24 @@ export default function StaffBookingsScreen() {
           detectedPlate: response.license_plate || '',
           booking: booking,
         });
+        setFailureManualPlate((response.license_plate || '').toUpperCase());
       }
     } catch (err: any) {
       console.error('Scan error:', err);
       const responseData = err.response?.data;
-      const licensePlate = responseData?.license_plate || responseData?.data?.license_plate || '';
       const message = responseData?.message || err.message || 'Lỗi kết nối máy chủ AI hoặc hệ thống.';
+
+      let licensePlate = 
+        responseData?.license_plate || 
+        responseData?.data?.license_plate || 
+        responseData?.licensePlate || 
+        responseData?.data?.licensePlate || 
+        responseData?.plate || 
+        '';
+
+      if (!licensePlate) {
+        licensePlate = extractPlateFromString(message) || extractPlateFromString(JSON.stringify(responseData || {}));
+      }
 
       setCheckinFailureModal({
         visible: true,
@@ -393,6 +437,7 @@ export default function StaffBookingsScreen() {
         detectedPlate: licensePlate || '',
         booking: booking,
       });
+      setFailureManualPlate((licensePlate || '').toUpperCase());
     } finally {
       setIsScanning(false);
     }
@@ -423,6 +468,14 @@ export default function StaffBookingsScreen() {
 
     if (typedPlate !== bookingPlate) {
       Alert.alert('Không khớp', 'Biển số xe nhập vào không khớp với lịch hẹn này.');
+      return;
+    }
+
+    if (!isManualServiceCompleted(booking)) {
+      Alert.alert(
+        'Chưa hoàn thành dịch vụ',
+        'Vui lòng hoàn thành tất cả các dịch vụ thủ công trước khi thực hiện Check-in.'
+      );
       return;
     }
 
@@ -709,7 +762,23 @@ export default function StaffBookingsScreen() {
         <View style={styles.bookingFooter}>
           <View style={styles.priceContainer}>
             <Text style={styles.priceMetaLabel}>Tổng thu</Text>
-            <Text style={styles.price}>{(item.final_price ?? 0).toLocaleString('vi-VN')} đ</Text>
+            <Text style={styles.price}>
+              {(() => {
+                const base = item.base_price ?? item.final_price ?? 0;
+                let totalDiscount = 0;
+                if (item.applied_tier_discount !== undefined || item.applied_promotion_discount !== undefined) {
+                  totalDiscount = (item.applied_tier_discount || 0) + (item.applied_promotion_discount || 0);
+                } else if (item.discount_amount !== undefined) {
+                  totalDiscount = item.discount_amount;
+                } else {
+                  const cust = (item as any).customer_id || (item as any).customer;
+                  const discPct = cust?.tier_id?.discount_percentage || 0;
+                  totalDiscount = Math.round(base * (discPct / 100));
+                }
+                const finalPrice = Math.max(0, base - totalDiscount);
+                return finalPrice.toLocaleString('vi-VN');
+              })()} đ
+            </Text>
           </View>
           <View style={styles.actionsBox}>
             {renderActionBtn()}
@@ -1171,8 +1240,18 @@ export default function StaffBookingsScreen() {
                     <>
                       {['confirmed', 'arrived'].includes(selectedBooking.booking_status as string) && (
                         <Pressable
-                          style={[styles.modalActionBtn, { backgroundColor: '#0284C7', marginBottom: 8 }]}
+                          style={[
+                            styles.modalActionBtn,
+                            { backgroundColor: checklist ? '#0284C7' : '#94A3B8', marginBottom: 8 }
+                          ]}
                           onPress={() => {
+                            if (!checklist) {
+                              Alert.alert(
+                                'Chưa tạo biên bản',
+                                'Vui lòng tạo biên bản đồng kiểm xe trước khi cập nhật trạng thái dịch vụ.'
+                              );
+                              return;
+                            }
                             setTickServicesModalBooking(selectedBooking);
                             setSelectedBooking(null);
                           }}>
@@ -1184,7 +1263,7 @@ export default function StaffBookingsScreen() {
                           <Text style={styles.modalActionBtnText}>Xác nhận đơn hàng</Text>
                         </Pressable>
                       )}
-                      {selectedBooking.booking_status === 'confirmed' && (
+                      {selectedBooking.booking_status === 'confirmed' && isManualServiceCompleted(selectedBooking) && (
                         missingChecklistIds.has(selectedBooking._id) ? (
                           <Pressable
                             style={[styles.modalActionBtn, { backgroundColor: ROSE }]}
@@ -1392,6 +1471,11 @@ export default function StaffBookingsScreen() {
                   <Ionicons name="close-circle" size={48} color={ROSE} style={{ marginBottom: 12 }} />
                   <Text style={styles.checkinFailureTitle}>Thất bại</Text>
                   <Text style={styles.checkinFailureDesc}>{checkinFailureModal.message}</Text>
+                  {!!checkinFailureModal.detectedPlate && (
+                    <Text style={{ fontSize: 13, color: GRAY, marginTop: 6, textAlign: 'center' }}>
+                      Biển số quét được: <Text style={{ fontWeight: '700', color: DARK }}>{checkinFailureModal.detectedPlate.toUpperCase()}</Text>
+                    </Text>
+                  )}
                 </View>
 
                 <TextInput
@@ -1425,6 +1509,16 @@ export default function StaffBookingsScreen() {
             </View>
           </KeyboardAvoidingView>
         </Modal>
+      )}
+
+      {/* FULL-SCREEN LOADING OVERLAY */}
+      {(actionLoading || isScanning) && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#FFFFFF" />
+            <Text style={styles.loadingOverlayText}>Đang xử lý, vui lòng đợi...</Text>
+          </View>
+        </View>
       )}
     </View>
   );
@@ -2007,5 +2101,28 @@ const styles = StyleSheet.create({
   checkinFailureBtnText: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  loadingContainer: {
+    backgroundColor: 'rgba(30, 41, 59, 0.9)',
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderRadius: 16,
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  loadingOverlayText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 8,
   },
 });

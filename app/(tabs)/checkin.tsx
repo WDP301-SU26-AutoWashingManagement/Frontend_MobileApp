@@ -22,10 +22,18 @@ import { useAuth } from '../../hooks/useAuthService';
 import bookingService, { Booking } from '../../services/bookingService';
 import CreateChecklistModal from '../../components/CreateChecklistModal';
 import ViewChecklistModal from '../../components/ViewChecklistModal';
+import TickServicesModal from '../../components/TickServicesModal';
 
 const ImagePicker: any = require('expo-image-picker');
 
 const { width } = Dimensions.get('window');
+
+const extractPlateFromString = (str: string): string => {
+  if (!str) return '';
+  const regex = /[0-9]{2}[A-Z]{1,2}[-]?\d{3,5}(?:\.\d{2})?/gi;
+  const match = str.match(regex);
+  return match ? match[0].replace(/[^a-zA-Z0-9]/g, '').toUpperCase() : '';
+};
 
 const CYAN = '#06B6D4';
 const PURPLE = '#8B5CF6';
@@ -76,6 +84,27 @@ export default function CheckinScreen() {
   const [createChecklistBooking, setCreateChecklistBooking] = useState<Booking | null>(null);
   const [viewChecklistBooking, setViewChecklistBooking] = useState<Booking | null>(null);
   const [checkinMethodBooking, setCheckinMethodBooking] = useState<Booking | null>(null);
+  const [tickServicesModalBooking, setTickServicesModalBooking] = useState<Booking | null>(null);
+
+  const isManualServiceCompleted = (booking: Booking | null) => {
+    if (!booking) return true;
+    const servicesList = booking.services || [];
+    for (const svc of servicesList) {
+      const svcObj = svc.service_id || svc.service;
+      const pkgObj = svc.service_package_id || svc.service_package;
+      const name = svcObj?.service_name || pkgObj?.package_name || pkgObj?.service_name || pkgObj?.name || 'Dịch vụ';
+      const isAutomated =
+        svcObj?.is_automated ||
+        svcObj?.service_name === 'Dịch vụ rửa xe' ||
+        svcObj?.service_name?.toLowerCase() === 'dịch vụ rửa xe' ||
+        name === 'Dịch vụ rửa xe';
+
+      if (!isAutomated && !svc.is_completed) {
+        return false;
+      }
+    }
+    return true;
+  };
 
   const [checklist, setChecklist] = useState<any | null>(null);
   const [loadingChecklist, setLoadingChecklist] = useState(false);
@@ -90,20 +119,30 @@ export default function CheckinScreen() {
   const [failureManualPlate, setFailureManualPlate] = useState('');
 
   const fetchBookings = async () => {
+    if (!user) {
+      setBookings([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
-      const list = await bookingService.list();
-      // Keep 'confirmed' and 'arrived' status bookings (waiting for check-in)
-      const confirmed = list.filter((b) => b.booking_status === 'confirmed' || b.booking_status === 'arrived');
-      setBookings(confirmed);
+      // Fetch only confirmed and arrived bookings directly from the server (up to 100 items)
+      const list = await bookingService.list({ booking_status: 'confirmed,arrived' });
+      
+      // Sort by scheduled time descending (newest first)
+      const sorted = [...list].sort((a, b) => {
+        return new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime();
+      });
+      
+      setBookings(sorted);
 
-      // Check checklist status for 'confirmed' bookings
-      if (confirmed.length > 0) {
-        const confirmedIds = confirmed.map((b) => b._id);
+      // Check checklist status for 'confirmed' and 'arrived' bookings
+      if (sorted.length > 0) {
+        const confirmedIds = sorted.map((b) => b._id);
         setLoadingChecklists(new Set(confirmedIds));
 
         const results = await Promise.all(
-          confirmed.map(async (b) => {
+          sorted.map(async (b) => {
             const id = b._id;
             try {
               const data = await bookingService.getChecklist(id);
@@ -131,6 +170,7 @@ export default function CheckinScreen() {
       }
     } catch (err: any) {
       console.error('Fetch bookings checkin error:', err);
+      Alert.alert('Lỗi', 'Không thể tải danh sách xe chờ check-in. Vui lòng kiểm tra kết nối.');
     } finally {
       setLoading(false);
     }
@@ -139,7 +179,7 @@ export default function CheckinScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchBookings();
-    }, [])
+    }, [user])
   );
 
   useEffect(() => {
@@ -196,6 +236,14 @@ export default function CheckinScreen() {
       return;
     }
 
+    if (!isManualServiceCompleted(matchingBooking)) {
+      Alert.alert(
+        'Chưa hoàn thành dịch vụ',
+        'Vui lòng hoàn thành tất cả các dịch vụ thủ công trước khi thực hiện Check-in.'
+      );
+      return;
+    }
+
     try {
       setIsScanning(true);
       await bookingService.checkin(matchingBooking._id);
@@ -220,7 +268,7 @@ export default function CheckinScreen() {
         }
         result = await ImagePicker.launchCameraAsync({
           allowsEditing: false,
-          quality: 0.8,
+          quality: 0.2,
         });
       } else {
         const libraryPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -230,7 +278,7 @@ export default function CheckinScreen() {
         }
         result = await ImagePicker.launchImageLibraryAsync({
           allowsEditing: false,
-          quality: 0.8,
+          quality: 0.2,
         });
       }
 
@@ -250,7 +298,7 @@ export default function CheckinScreen() {
 
       const response = await bookingService.checkinWithCamera(imageUri, mimeType, fileName);
 
-      if (response.success) {
+      if (response && response.success) {
         // Double check if the checked-in booking is the one we wanted
         const scannedId = response.appointment_id || '';
         const selectedId = booking?._id;
@@ -278,6 +326,7 @@ export default function CheckinScreen() {
             detectedPlate: response.license_plate || '',
             booking: booking,
           });
+          setFailureManualPlate((response.license_plate || '').toUpperCase());
         } else {
           if (response.license_plate) {
             setManualPlate(response.license_plate.toUpperCase());
@@ -292,8 +341,19 @@ export default function CheckinScreen() {
       console.error('Scan error:', err);
 
       const responseData = err.response?.data;
-      const licensePlate = responseData?.license_plate || responseData?.data?.license_plate || '';
       const message = responseData?.message || err.message || 'Lỗi kết nối máy chủ AI hoặc hệ thống.';
+      
+      let licensePlate = 
+        responseData?.license_plate || 
+        responseData?.data?.license_plate || 
+        responseData?.licensePlate || 
+        responseData?.data?.licensePlate || 
+        responseData?.plate || 
+        '';
+
+      if (!licensePlate) {
+        licensePlate = extractPlateFromString(message) || extractPlateFromString(JSON.stringify(responseData || {}));
+      }
 
       if (booking) {
         setCheckinFailureModal({
@@ -302,6 +362,7 @@ export default function CheckinScreen() {
           detectedPlate: licensePlate || '',
           booking: booking,
         });
+        setFailureManualPlate((licensePlate || '').toUpperCase());
       } else {
         if (licensePlate) {
           setManualPlate(licensePlate.toUpperCase());
@@ -372,6 +433,14 @@ export default function CheckinScreen() {
 
     if (typedPlate !== bookingPlate) {
       Alert.alert('Không khớp', 'Biển số xe nhập vào không khớp với lịch hẹn này.');
+      return;
+    }
+
+    if (!isManualServiceCompleted(booking)) {
+      Alert.alert(
+        'Chưa hoàn thành dịch vụ',
+        'Vui lòng hoàn thành tất cả các dịch vụ thủ công trước khi thực hiện Check-in.'
+      );
       return;
     }
 
@@ -455,6 +524,13 @@ export default function CheckinScreen() {
             onPress={() => setCreateChecklistBooking(item)}>
             <MaterialCommunityIcons name="file-document-outline" size={16} color="#FFFFFF" />
             <Text style={styles.cardBtnText}>Tạo Biên bản</Text>
+          </Pressable>
+        ) : !isManualServiceCompleted(item) ? (
+          <Pressable
+            style={({ pressed }) => [styles.cardBtn, { backgroundColor: '#0284C7' }, pressed && { opacity: 0.85 }]}
+            onPress={() => setTickServicesModalBooking(item)}>
+            <MaterialCommunityIcons name="format-list-checks" size={16} color="#FFFFFF" />
+            <Text style={styles.cardBtnText}>Cập nhật DV</Text>
           </Pressable>
         ) : (
           <Pressable
@@ -646,14 +722,20 @@ export default function CheckinScreen() {
                     <Text style={styles.modalSectionTitle}>Dịch vụ & Thanh toán</Text>
                     <View style={styles.infoCard}>
                       {(() => {
-                        const combos: Record<string, { name: string, price: number, items: string[] }> = {};
-                        const individuals: Array<{ name: string, price: number }> = [];
+                        const combos: Record<string, { name: string, price: number, items: Array<{ name: string, isCompleted: boolean }> }> = {};
+                        const individuals: Array<{ name: string, price: number, isCompleted: boolean }> = [];
+                        const servicesList = selectedBooking.services || [];
+                        const totalCount = servicesList.length;
+                        const completedCount = servicesList.filter(s => !!s.is_completed).length;
 
-                        selectedBooking.services.forEach((svc: any) => {
+                        servicesList.forEach(svc => {
                           const pkg = svc.service_package_id || svc.service_package;
                           const service = svc.service_id || svc.service;
+                          const isDone = !!svc.is_completed;
+                          const sName = service?.service_name || 'Dịch vụ';
+
                           if (pkg) {
-                            const pkgId = pkg._id;
+                            const pkgId = pkg._id || (pkg as any).id || 'combo';
                             if (!combos[pkgId]) {
                               combos[pkgId] = {
                                 name: pkg.package_name || pkg.name || pkg.service_name || 'Combo',
@@ -662,22 +744,33 @@ export default function CheckinScreen() {
                               };
                             }
                             combos[pkgId].price += svc.price_snapshot;
-                            combos[pkgId].items.push(service?.service_name || 'Dịch vụ');
+                            combos[pkgId].items.push({ name: sName, isCompleted: isDone });
                           } else {
                             individuals.push({
-                              name: service?.service_name || 'Dịch vụ',
-                              price: svc.price_snapshot
+                              name: sName,
+                              price: svc.price_snapshot,
+                              isCompleted: isDone
                             });
                           }
                         });
 
                         return (
                           <View style={{ width: '100%', gap: 10 }}>
-                            <Text style={[styles.infoLabel, { fontSize: 13, marginBottom: 4 }]}>Chi tiết dịch vụ:</Text>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                              <Text style={[styles.infoLabel, { fontSize: 13 }]}>Chi tiết dịch vụ:</Text>
+                              {totalCount > 0 && (
+                                <View style={{ backgroundColor: completedCount === totalCount ? '#ECFDF5' : '#F0F9FF', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, borderWidth: 1, borderColor: completedCount === totalCount ? '#A7F3D0' : '#BAE6FD' }}>
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: completedCount === totalCount ? '#047857' : '#0284C7' }}>
+                                    {completedCount === totalCount ? '✓ Hoàn thành tất cả' : `Tiến độ: ${completedCount}/${totalCount}`}
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
 
+                            {/* Render Combos */}
                             {Object.values(combos).map((combo, idx) => (
-                              <View key={`combo-${idx}`} style={{ width: '100%', marginBottom: 8 }}>
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
+                              <View key={`combo-${idx}`} style={{ width: '100%', marginBottom: 8, backgroundColor: '#F8FAFC', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#F1F5F9' }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%', marginBottom: 4 }}>
                                   <Text style={{ fontSize: 13, fontWeight: '700', color: '#0891B2', flex: 1, paddingRight: 8 }}>
                                     {combo.name}
                                   </Text>
@@ -686,21 +779,46 @@ export default function CheckinScreen() {
                                   </Text>
                                 </View>
                                 {combo.items.map((subItem, sIdx) => (
-                                  <Text key={`sub-${sIdx}`} style={{ fontSize: 12, color: GRAY, marginLeft: 12, marginTop: 2 }}>
-                                    • {subItem}
-                                  </Text>
+                                  <View key={`sub-${sIdx}`} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginLeft: 8, marginTop: 4 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 }}>
+                                      <MaterialCommunityIcons
+                                        name={subItem.isCompleted ? "check-circle" : "clock-outline"}
+                                        size={14}
+                                        color={subItem.isCompleted ? "#10B981" : "#94A3B8"}
+                                      />
+                                      <Text style={{ fontSize: 12, color: subItem.isCompleted ? '#059669' : GRAY, fontWeight: subItem.isCompleted ? '600' : '400' }}>
+                                        {subItem.name}
+                                      </Text>
+                                    </View>
+                                    <Text style={{ fontSize: 11, fontWeight: '700', color: subItem.isCompleted ? '#047857' : '#D97706' }}>
+                                      {subItem.isCompleted ? '✓ Đã xong' : '⏳ Chưa xong'}
+                                    </Text>
+                                  </View>
                                 ))}
                               </View>
                             ))}
 
+                            {/* Render Individuals */}
                             {individuals.map((ind, idx) => (
-                              <View key={`ind-${idx}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 4 }}>
-                                <Text style={{ fontSize: 13, fontWeight: '700', color: DARK, flex: 1, paddingRight: 8 }}>
-                                  {ind.name}
-                                </Text>
-                                <Text style={{ fontSize: 13, fontWeight: '600', color: DARK }}>
-                                  {ind.price.toLocaleString('vi-VN')} đ
-                                </Text>
+                              <View key={`ind-${idx}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 6, backgroundColor: ind.isCompleted ? '#F0FDF4' : '#F8FAFC', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: ind.isCompleted ? '#DCFCE7' : '#F1F5F9' }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                                  <MaterialCommunityIcons
+                                    name={ind.isCompleted ? "check-circle" : "clock-outline"}
+                                    size={16}
+                                    color={ind.isCompleted ? "#10B981" : "#94A3B8"}
+                                  />
+                                  <Text style={{ fontSize: 13, fontWeight: '700', color: ind.isCompleted ? '#047857' : DARK, flex: 1 }}>
+                                    {ind.name}
+                                  </Text>
+                                </View>
+                                <View style={{ alignItems: 'flex-end' }}>
+                                  <Text style={{ fontSize: 13, fontWeight: '600', color: DARK }}>
+                                    {ind.price.toLocaleString('vi-VN')} đ
+                                  </Text>
+                                  <Text style={{ fontSize: 10, fontWeight: '700', color: ind.isCompleted ? '#047857' : '#D97706', marginTop: 2 }}>
+                                    {ind.isCompleted ? '✓ Đã xong' : '⏳ Chưa xong'}
+                                  </Text>
+                                </View>
                               </View>
                             ))}
                           </View>
@@ -712,29 +830,66 @@ export default function CheckinScreen() {
                       <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>Tổng phí dịch vụ:</Text>
                         <Text style={styles.infoVal}>
-                          {(selectedBooking.base_price ?? 0).toLocaleString('vi-VN')} đ
+                          {(selectedBooking.base_price ?? selectedBooking.final_price ?? 0).toLocaleString('vi-VN')} đ
                         </Text>
                       </View>
 
-                      {selectedBooking.customer_id?.tier_id?.discount_percentage ? (
-                        <View style={styles.infoRow}>
-                          <Text style={styles.infoLabel}>
-                            Hạng {selectedBooking.customer_id.tier_id.tier_name || 'thành viên'}:
-                          </Text>
-                          <Text style={[styles.infoVal, { color: GREEN }]}>
-                            -{selectedBooking.customer_id.tier_id.discount_percentage}%
-                          </Text>
-                        </View>
-                      ) : null}
+                      {/* Tier membership discount */}
+                      {(() => {
+                        const cust = (selectedBooking as any).customer_id || (selectedBooking as any).customer;
+                        if (selectedBooking.applied_tier_discount !== undefined) {
+                          if (selectedBooking.applied_tier_discount > 0) {
+                            return (
+                              <View style={styles.infoRow}>
+                                <Text style={styles.infoLabel}>Giảm giá hạng thành viên:</Text>
+                                <Text style={[styles.infoVal, { color: GREEN }]}>
+                                  -{selectedBooking.applied_tier_discount.toLocaleString('vi-VN')} đ
+                                </Text>
+                              </View>
+                            );
+                          }
+                        } else if (cust?.tier_id?.discount_percentage) {
+                          const base = selectedBooking.base_price ?? selectedBooking.final_price ?? 0;
+                          const tierDiscAmount = Math.round(base * (cust.tier_id.discount_percentage / 100));
+                          return (
+                            <View style={styles.infoRow}>
+                              <Text style={styles.infoLabel}>
+                                Giảm giá hạng thành viên:
+                              </Text>
+                              <Text style={[styles.infoVal, { color: GREEN }]}>
+                                -{tierDiscAmount.toLocaleString('vi-VN')} đ ({cust.tier_id.discount_percentage}%)
+                              </Text>
+                            </View>
+                          );
+                        }
+                        return null;
+                      })()}
 
-                      {selectedBooking.discount_amount ? (
-                        <View style={styles.infoRow}>
-                          <Text style={styles.infoLabel}>Khuyến mãi khác:</Text>
-                          <Text style={[styles.infoVal, { color: GREEN }]}>
-                            -{selectedBooking.discount_amount.toLocaleString('vi-VN')} đ
-                          </Text>
-                        </View>
-                      ) : null}
+                      {/* Other discounts */}
+                      {(() => {
+                        let purePromotionDiscount = 0;
+                        if (selectedBooking.applied_promotion_discount !== undefined) {
+                          purePromotionDiscount = selectedBooking.applied_promotion_discount;
+                        } else {
+                          const base = selectedBooking.base_price ?? selectedBooking.final_price ?? 0;
+                          const cust = (selectedBooking as any).customer_id || (selectedBooking as any).customer;
+                          const tierDiscPct = cust?.tier_id?.discount_percentage || 0;
+                          const tierDiscAmount = Math.round(base * (tierDiscPct / 100));
+                          purePromotionDiscount = Math.max(0, (selectedBooking.discount_amount || 0) - tierDiscAmount);
+                        }
+
+                        if (purePromotionDiscount > 0) {
+                          return (
+                            <View style={styles.infoRow}>
+                              <Text style={styles.infoLabel}>Khuyến mãi khác:</Text>
+                              <Text style={[styles.infoVal, { color: GREEN }]}>
+                                -{purePromotionDiscount.toLocaleString('vi-VN')} đ
+                              </Text>
+                            </View>
+                          );
+                        }
+                        return null;
+                      })()}
 
                       <View style={styles.divider} />
 
@@ -742,15 +897,20 @@ export default function CheckinScreen() {
                         <Text style={[styles.infoLabel, { fontWeight: '700', color: DARK }]}>Tổng thanh toán:</Text>
                         <Text style={[styles.infoVal, { fontWeight: '800', color: ROSE, fontSize: 16 }]}>
                           {(() => {
-                            const base = selectedBooking.base_price ?? 0;
-                            const discPct = selectedBooking.customer_id?.tier_id?.discount_percentage || 0;
-                            const otherDisc = selectedBooking.discount_amount || 0;
+                            const base = selectedBooking.base_price ?? selectedBooking.final_price ?? 0;
 
-                            if (selectedBooking.final_price !== undefined) {
-                              return selectedBooking.final_price.toLocaleString('vi-VN');
+                            let totalDiscount = 0;
+                            if (selectedBooking.applied_tier_discount !== undefined || selectedBooking.applied_promotion_discount !== undefined) {
+                              totalDiscount = (selectedBooking.applied_tier_discount || 0) + (selectedBooking.applied_promotion_discount || 0);
+                            } else if (selectedBooking.discount_amount !== undefined) {
+                              totalDiscount = selectedBooking.discount_amount;
+                            } else {
+                              const cust = (selectedBooking as any).customer_id || (selectedBooking as any).customer;
+                              const discPct = cust?.tier_id?.discount_percentage || 0;
+                              totalDiscount = Math.round(base * (discPct / 100));
                             }
 
-                            const finalPrice = Math.max(0, base - Math.round(base * (discPct / 100)) - otherDisc);
+                            const finalPrice = Math.max(0, base - totalDiscount);
                             return finalPrice.toLocaleString('vi-VN');
                           })()} đ
                         </Text>
@@ -762,26 +922,52 @@ export default function CheckinScreen() {
                 <View style={styles.modalFooter}>
                   {isScanning ? (
                     <ActivityIndicator size="small" color={CYAN} style={{ alignSelf: 'center', padding: 12 }} />
-                  ) : missingChecklistIds.has(selectedBooking._id) ? (
-                    <Pressable
-                      style={[styles.modalActionBtn, { backgroundColor: ROSE }]}
-                      onPress={() => {
-                        setCreateChecklistBooking(selectedBooking);
-                        setSelectedBooking(null);
-                      }}
-                    >
-                      <Text style={styles.modalActionBtnText}>Tạo Biên bản</Text>
-                    </Pressable>
                   ) : (
-                    <Pressable
-                      style={[styles.modalActionBtn, { backgroundColor: CYAN }]}
-                      onPress={() => {
-                        setSelectedBooking(null);
-                        setCheckinMethodBooking(selectedBooking);
-                      }}
-                    >
-                      <Text style={styles.modalActionBtnText}>Check-in</Text>
-                    </Pressable>
+                    <>
+                      {!isManualServiceCompleted(selectedBooking) && (
+                        <Pressable
+                          style={[
+                            styles.modalActionBtn,
+                            { backgroundColor: checklist ? '#0284C7' : '#94A3B8', marginBottom: 8 }
+                          ]}
+                          onPress={() => {
+                            if (!checklist) {
+                              Alert.alert(
+                                'Chưa tạo biên bản',
+                                'Vui lòng tạo biên bản đồng kiểm xe trước khi cập nhật trạng thái dịch vụ.'
+                              );
+                              return;
+                            }
+                            setTickServicesModalBooking(selectedBooking);
+                            setSelectedBooking(null);
+                          }}>
+                          <Text style={styles.modalActionBtnText}>Cập nhật Dịch vụ Thủ công</Text>
+                        </Pressable>
+                      )}
+                      {isManualServiceCompleted(selectedBooking) && (
+                        missingChecklistIds.has(selectedBooking._id) ? (
+                          <Pressable
+                            style={[styles.modalActionBtn, { backgroundColor: ROSE }]}
+                            onPress={() => {
+                              setCreateChecklistBooking(selectedBooking);
+                              setSelectedBooking(null);
+                            }}
+                          >
+                            <Text style={styles.modalActionBtnText}>Tạo Biên bản</Text>
+                          </Pressable>
+                        ) : (
+                          <Pressable
+                            style={[styles.modalActionBtn, { backgroundColor: CYAN }]}
+                            onPress={() => {
+                              setSelectedBooking(null);
+                              setCheckinMethodBooking(selectedBooking);
+                            }}
+                          >
+                            <Text style={styles.modalActionBtnText}>Check-in</Text>
+                          </Pressable>
+                        )
+                      )}
+                    </>
                   )}
                 </View>
               </>
@@ -894,6 +1080,11 @@ export default function CheckinScreen() {
                   <Ionicons name="close-circle" size={48} color={ROSE} style={{ marginBottom: 12 }} />
                   <Text style={styles.checkinFailureTitle}>Thất bại</Text>
                   <Text style={styles.checkinFailureDesc}>{checkinFailureModal.message}</Text>
+                  {!!checkinFailureModal.detectedPlate && (
+                    <Text style={{ fontSize: 13, color: GRAY, marginTop: 6, textAlign: 'center' }}>
+                      Biển số quét được: <Text style={{ fontWeight: '700', color: DARK }}>{checkinFailureModal.detectedPlate.toUpperCase()}</Text>
+                    </Text>
+                  )}
                 </View>
 
                 <TextInput
@@ -927,6 +1118,31 @@ export default function CheckinScreen() {
             </View>
           </KeyboardAvoidingView>
         </Modal>
+      )}
+
+      {/* TICK MANUAL SERVICES MODAL FOR STAFF */}
+      {tickServicesModalBooking && (
+        <TickServicesModal
+          booking={tickServicesModalBooking}
+          visible={!!tickServicesModalBooking}
+          onClose={() => setTickServicesModalBooking(null)}
+          onSuccess={() => fetchBookings()}
+          onCheckin={() => {
+            const b = tickServicesModalBooking;
+            setTickServicesModalBooking(null);
+            if (b) setCheckinMethodBooking(b);
+          }}
+        />
+      )}
+
+      {/* FULL-SCREEN LOADING OVERLAY */}
+      {isScanning && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#FFFFFF" />
+            <Text style={styles.loadingOverlayText}>Đang xử lý, vui lòng đợi...</Text>
+          </View>
+        </View>
       )}
     </View>
   );
@@ -1466,5 +1682,28 @@ const styles = StyleSheet.create({
   checkinFailureBtnText: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  loadingContainer: {
+    backgroundColor: 'rgba(30, 41, 59, 0.9)',
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderRadius: 16,
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  loadingOverlayText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 8,
   },
 });

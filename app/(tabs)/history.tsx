@@ -179,6 +179,12 @@ export default function HistoryScreen() {
   };
 
   const loadBookings = useCallback(async (showLoading = true) => {
+    if (!user) {
+      setBookings([]);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     if (showLoading) setLoading(true);
     try {
       const data = await bookingService.list();
@@ -193,7 +199,7 @@ export default function HistoryScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     loadBookings();
@@ -1068,27 +1074,27 @@ export default function HistoryScreen() {
                       </Text>
                       {(viewReportModal.booking.report.reject_details?.admin_signature ||
                         viewReportModal.booking.report.reject_details?.customer_signature) && (
-                        <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-                          {viewReportModal.booking.report.reject_details.admin_signature && (
-                            <View style={styles.signatureBox}>
-                              <Text style={styles.sigRoleText}>Đại diện cửa hàng</Text>
-                              <Image
-                                source={{ uri: viewReportModal.booking.report.reject_details.admin_signature }}
-                                style={styles.signatureImage}
-                              />
-                            </View>
-                          )}
-                          {viewReportModal.booking.report.reject_details.customer_signature && (
-                            <View style={styles.signatureBox}>
-                              <Text style={styles.sigRoleText}>Khách hàng</Text>
-                              <Image
-                                source={{ uri: viewReportModal.booking.report.reject_details.customer_signature }}
-                                style={styles.signatureImage}
-                              />
-                            </View>
-                          )}
-                        </View>
-                      )}
+                          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+                            {viewReportModal.booking.report.reject_details.admin_signature && (
+                              <View style={styles.signatureBox}>
+                                <Text style={styles.sigRoleText}>Đại diện cửa hàng</Text>
+                                <Image
+                                  source={{ uri: viewReportModal.booking.report.reject_details.admin_signature }}
+                                  style={styles.signatureImage}
+                                />
+                              </View>
+                            )}
+                            {viewReportModal.booking.report.reject_details.customer_signature && (
+                              <View style={styles.signatureBox}>
+                                <Text style={styles.sigRoleText}>Khách hàng</Text>
+                                <Image
+                                  source={{ uri: viewReportModal.booking.report.reject_details.customer_signature }}
+                                  style={styles.signatureImage}
+                                />
+                              </View>
+                            )}
+                          </View>
+                        )}
                     </View>
                   )}
 
@@ -1097,7 +1103,7 @@ export default function HistoryScreen() {
                     viewReportModal.booking.report.compensation && (
                       <View style={styles.compensationCard}>
                         <Text style={styles.compensationCardTitle}>Biên bản cam kết đền bù</Text>
-                        
+
                         <View style={{ marginBottom: 8 }}>
                           <Text style={styles.rejectionReasonLabel}>Số tiền đền bù:</Text>
                           <Text style={styles.compensationAmountText}>
@@ -1271,7 +1277,7 @@ export default function HistoryScreen() {
                   <SignatureScreen
                     ref={sigRef}
                     onOK={(sig) => handleConfirmSignatureSubmit(sig)}
-                    onClear={() => {}}
+                    onClear={() => { }}
                     onBegin={() => setSigScrollEnabled(false)}
                     onEnd={() => setSigScrollEnabled(true)}
                     descriptionText="Ký vào đây"
@@ -1604,7 +1610,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   serviceItemPrice: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: '#0F172A',
   },
