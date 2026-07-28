@@ -44,6 +44,8 @@ export interface Booking {
   booking_status: 'pending' | 'confirmed' | 'arrived' | 'checked_in' | 'in_progress' | 'washed' | 'completed' | 'cancelled' | 'compensated';
   booking_source: 'app' | 'web' | 'walk_in';
   scheduled_at: string;
+  createdAt?: string;
+  created_at?: string;
   checkedin_at?: string | null;
   started_at?: string | null;
   completed_at?: string | null;

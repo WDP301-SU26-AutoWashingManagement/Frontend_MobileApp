@@ -109,11 +109,11 @@ export default function BookingsScreen() {
         vehicleService.getVehicleModels().catch(() => []),
         vehicleService.getMakes().catch(() => []),
       ]);
-      // Sort bookings: pending/confirmed/in_progress first, then by date descending
+      // Sort bookings by creation date descending (newest created booking first)
       const sorted = [...list].sort((a, b) => {
-        const dateA = new Date(a.scheduled_at).getTime();
-        const dateB = new Date(b.scheduled_at).getTime();
-        return dateB - dateA;
+        const timeA = new Date(a.createdAt || a.created_at || a.scheduled_at).getTime();
+        const timeB = new Date(b.createdAt || b.created_at || b.scheduled_at).getTime();
+        return timeB - timeA;
       });
       setBookings(sorted);
       setModels(fetchedModels);

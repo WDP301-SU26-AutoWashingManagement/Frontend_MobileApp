@@ -21,6 +21,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import SignatureScreen, { SignatureViewRef } from 'react-native-signature-canvas';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../hooks/useAuthService';
 import bookingService, { Booking } from '../../services/bookingService';
 
@@ -188,9 +189,11 @@ export default function HistoryScreen() {
     if (showLoading) setLoading(true);
     try {
       const data = await bookingService.list();
-      const sorted = [...data].sort(
-        (a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime()
-      );
+      const sorted = [...data].sort((a: any, b: any) => {
+        const timeA = new Date(a.createdAt || a.created_at || a.scheduled_at).getTime();
+        const timeB = new Date(b.createdAt || b.created_at || b.scheduled_at).getTime();
+        return timeB - timeA;
+      });
       setBookings(sorted);
     } catch (err) {
       console.error('Failed to load bookings:', err);
@@ -201,9 +204,11 @@ export default function HistoryScreen() {
     }
   }, [user]);
 
-  useEffect(() => {
-    loadBookings();
-  }, [loadBookings]);
+  useFocusEffect(
+    useCallback(() => {
+      loadBookings(false);
+    }, [loadBookings])
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
