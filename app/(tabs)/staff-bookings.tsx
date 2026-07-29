@@ -31,33 +31,34 @@ const ImagePicker: any = require('expo-image-picker');
 
 const { width } = Dimensions.get('window');
 
-const extractPlateFromString = (str: string): string => {
+//
+function extractPlateFromString(str: string): string {
   if (!str) return '';
   const regex = /[0-9]{2}[A-Z]{1,2}[-]?\d{3,5}(?:\.\d{2})?/gi;
   const match = str.match(regex);
   return match ? match[0].replace(/[^a-zA-Z0-9]/g, '').toUpperCase() : '';
-};
+}
 
-const formatISOToCustom = (iso: string): string => {
+function formatISOToCustom(iso: string): string {
   if (!iso) return '';
   const parts = iso.split('-');
   if (parts.length !== 3) return iso;
   const yy = parts[0].slice(-2);
   return `${parts[2]}-${parts[1]}-${yy}`;
-};
+}
 
 const parseCustomDateInput = (input: string): string | null => {
   if (!input) return null;
   const normalized = input.trim().replace(/[\/\.\s]/g, '-');
   const parts = normalized.split('-');
   if (parts.length !== 3) return null;
-  
+
   let dd = parts[0].padStart(2, '0');
   let mm = parts[1].padStart(2, '0');
   let yy = parts[2];
-  
+
   if (dd.length !== 2 || mm.length !== 2) return null;
-  
+
   let yyyy = '';
   if (yy.length === 2) {
     yyyy = `20${yy}`;
@@ -66,14 +67,14 @@ const parseCustomDateInput = (input: string): string | null => {
   } else {
     return null;
   }
-  
+
   const day = parseInt(dd, 10);
   const month = parseInt(mm, 10);
   const year = parseInt(yyyy, 10);
-  
+
   if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
   if (day < 1 || day > 31 || month < 1 || month > 12 || year < 2000 || year > 2100) return null;
-  
+
   return `${yyyy}-${mm}-${dd}`;
 };
 
@@ -444,7 +445,7 @@ export default function StaffBookingsScreen() {
         // Double check if the checked-in booking is the one we wanted, or another one
         const scannedId = response.appointment_id || '';
         const selectedId = booking._id;
-        
+
         if (scannedId === selectedId) {
           Alert.alert(
             'Check-in Thành Công!',
@@ -474,12 +475,12 @@ export default function StaffBookingsScreen() {
       const responseData = err.response?.data;
       const message = responseData?.message || err.message || 'Lỗi kết nối máy chủ AI hoặc hệ thống.';
 
-      let licensePlate = 
-        responseData?.license_plate || 
-        responseData?.data?.license_plate || 
-        responseData?.licensePlate || 
-        responseData?.data?.licensePlate || 
-        responseData?.plate || 
+      let licensePlate =
+        responseData?.license_plate ||
+        responseData?.data?.license_plate ||
+        responseData?.licensePlate ||
+        responseData?.data?.licensePlate ||
+        responseData?.plate ||
         '';
 
       if (!licensePlate) {
@@ -1609,9 +1610,9 @@ export default function StaffBookingsScreen() {
                     <Ionicons name="close" size={24} color={GRAY} />
                   </Pressable>
                 </View>
-  
+
                 <Text style={{ fontSize: 13, color: GRAY, marginBottom: 10, fontWeight: '600' }}>Chọn nhanh trong danh sách ngày:</Text>
-                
+
                 <ScrollView style={{ maxHeight: 220, marginBottom: 16 }}>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {(() => {
@@ -1627,7 +1628,7 @@ export default function StaffBookingsScreen() {
                         const label = i === 0 ? 'Hôm nay' : i === -1 ? 'Hôm qua' : i === 1 ? 'Ngày mai' : `${dd}/${mm}`;
                         const dayOfWeek = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][d.getDay()];
                         const isSelected = selectedDate === fullDate;
-  
+
                         dateChips.push(
                           <Pressable
                             key={fullDate}
@@ -1656,7 +1657,7 @@ export default function StaffBookingsScreen() {
                     })()}
                   </View>
                 </ScrollView>
-  
+
                 <Text style={{ fontSize: 13, color: GRAY, marginBottom: 6, fontWeight: '600' }}>Hoặc nhập ngày tùy chỉnh (DD-MM-YY):</Text>
                 <TextInput
                   style={{
@@ -1676,7 +1677,7 @@ export default function StaffBookingsScreen() {
                   value={customDateInputText}
                   onChangeText={setCustomDateInputText}
                 />
-  
+
                 <View style={{ flexDirection: 'row', gap: 12 }}>
                   <Pressable
                     style={{

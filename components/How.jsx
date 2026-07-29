@@ -1,5 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import servicePackageService from '../services/servicePackageService';
 
 const steps = [
   {
@@ -29,6 +31,26 @@ const steps = [
 ];
 
 export default function HowItWorks() {
+  const [washPrice, setWashPrice] = useState('50.000đ');
+
+  useEffect(() => {
+    const fetchWashPrice = async () => {
+      try {
+        const services = await servicePackageService.listActiveServices();
+        const washService = services.find(
+          s => s.service_name === 'Dịch vụ rửa xe' || s.service_name?.toLowerCase() === 'dịch vụ rửa xe'
+        );
+        if (washService && washService.service_price !== undefined) {
+          const formatted = Number(washService.service_price).toLocaleString('vi-VN') + 'đ';
+          setWashPrice(formatted);
+        }
+      } catch (err) {
+        console.error('Error fetching wash price in HowItWorks:', err);
+      }
+    };
+    fetchWashPrice();
+  }, []);
+
   return (
     <View style={styles.section}>
       <Text style={styles.label}>Quy trình</Text>
@@ -63,7 +85,7 @@ export default function HowItWorks() {
             </View>
           </View>
           <Text style={styles.noticeTextMain}>
-            Mọi lịch hẹn <Text style={{ fontWeight: '700', color: '#0F172A' }}>mặc định bao gồm Dịch vụ rửa xe</Text> (<Text style={styles.priceHighlight}>50.000đ</Text>). Quý khách có thể chọn thêm dịch vụ lẻ hoặc gói Combo tùy nhu cầu.
+            Mọi lịch hẹn <Text style={{ fontWeight: '700', color: '#0F172A' }}>mặc định bao gồm Dịch vụ rửa xe</Text> (<Text style={styles.priceHighlight}>{washPrice}</Text>). Quý khách có thể chọn thêm dịch vụ lẻ hoặc gói Combo tùy nhu cầu.
           </Text>
         </View>
       </View>

@@ -141,10 +141,6 @@ export default function HistoryScreen() {
     if (tier && typeof tier === 'object' && 'discount_percentage' in tier) {
       return (tier as any).discount_percentage || 0;
     }
-    const points = user?.role_data?.membership_points ?? 0;
-    if (points >= 600) return 15;
-    if (points >= 300) return 10;
-    if (points >= 100) return 5;
     return 0;
   }, [user]);
 
