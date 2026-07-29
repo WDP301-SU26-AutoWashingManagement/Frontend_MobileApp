@@ -1,15 +1,17 @@
 {
   "expo": {
-    "name": "AutoWash",
-    "slug": "AutoWash",
+    "name": "HybridWash",
+    "slug": "HybridWash",
+    "owner": "thai5236",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "autowash",
+    "scheme": "hybridwash",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hybridwash.mobile"
     },
     "android": {
       "adaptiveIcon": {
@@ -38,7 +40,10 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-video",
+      "@react-native-google-signin/google-signin",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
