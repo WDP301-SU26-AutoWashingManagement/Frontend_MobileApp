@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions, Pressable, Modal, ScrollView, Alert, Platform, Animated } from 'react-native';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import branchService from '../services/branchService';
+import promotionService from '../services/promotionService';
 
 const VIDEO_URI = 'https://cdn.pixabay.com/video/2023/10/12/184734-873923034_large.mp4';
 
@@ -35,6 +38,10 @@ export default function Hero() {
   const bottomWordLeft = isSmall ? 240 : 280;
 
   const [stats, setStats] = useState({ customers: 0, bookings: 0, branches: 0 });
+  const [promotions, setPromotions] = useState([]);
+  const [showPromoModal, setShowPromoModal] = useState(false);
+  const shakeAnimation = useRef(new Animated.Value(0)).current;
+
   const player = useVideoPlayer(VIDEO_URI, (p) => {
     p.loop = true;
     p.muted = true;
@@ -55,6 +62,49 @@ export default function Hero() {
     fetchStats();
   }, []);
 
+  useEffect(() => {
+    async function loadPromotions() {
+      try {
+        const data = await promotionService.list({ is_active: true, limit: 10 });
+        setPromotions(data || []);
+      } catch (error) {
+        console.error('Lỗi khi tải khuyến mãi trong Hero:', error);
+      }
+    }
+    loadPromotions();
+  }, []);
+
+  useEffect(() => {
+    if (promotions.length > 0) {
+      const startShake = () => {
+        shakeAnimation.setValue(0);
+        Animated.sequence([
+          Animated.timing(shakeAnimation, { toValue: 1, duration: 60, useNativeDriver: true }),
+          Animated.timing(shakeAnimation, { toValue: -1, duration: 100, useNativeDriver: true }),
+          Animated.timing(shakeAnimation, { toValue: 0.8, duration: 80, useNativeDriver: true }),
+          Animated.timing(shakeAnimation, { toValue: -0.8, duration: 80, useNativeDriver: true }),
+          Animated.timing(shakeAnimation, { toValue: 0.5, duration: 80, useNativeDriver: true }),
+          Animated.timing(shakeAnimation, { toValue: -0.5, duration: 80, useNativeDriver: true }),
+          Animated.timing(shakeAnimation, { toValue: 0, duration: 60, useNativeDriver: true }),
+        ]).start(() => {
+          setTimeout(startShake, 4000);
+        });
+      };
+      const initialTimeout = setTimeout(startShake, 2000);
+      return () => clearTimeout(initialTimeout);
+    }
+  }, [promotions]);
+
+  const bellRotation = shakeAnimation.interpolate({
+    inputRange: [-1, 1],
+    outputRange: ['-18deg', '18deg'],
+  });
+
+  const copyToClipboard = async (code) => {
+    await Clipboard.setStringAsync(code);
+    Alert.alert('Đã sao chép', `Đã sao chép mã khuyến mãi "${code}" vào bộ nhớ tạm.`);
+  };
+
   return (
     <View style={[styles.hero, { height: Math.max(Math.round(screenHeight * 0.72), 620) }]}>
       <VideoView
@@ -69,14 +119,27 @@ export default function Hero() {
 
       <View style={styles.content}>
         <View style={styles.brandRow}>
-          <Image
-            source={require('@/assets/images/logo2.png')}
-            style={styles.logo}
-            contentFit="contain"
-          />
-          <Text style={styles.brandText}>
-            Hybrid<Text style={styles.brandAccent}>Wash</Text>
-          </Text>
+          <View style={styles.brandLeft}>
+            <Image
+              source={require('@/assets/images/logo2.png')}
+              style={styles.logo}
+              contentFit="contain"
+            />
+            <Text style={styles.brandText}>
+              Hybrid<Text style={styles.brandAccent}>Wash</Text>
+            </Text>
+          </View>
+
+          <Pressable style={styles.notificationBtn} onPress={() => setShowPromoModal(true)}>
+            <Animated.View style={{ transform: [{ rotate: bellRotation }] }}>
+              <Ionicons name="notifications-outline" size={26} color="#FFFFFF" style={styles.notificationIcon} />
+            </Animated.View>
+            {promotions.length > 0 && (
+              <View style={styles.badgeContainer}>
+                <Text style={styles.badgeText}>{promotions.length}</Text>
+              </View>
+            )}
+          </Pressable>
         </View>
 
         <View style={styles.stage}>
@@ -109,6 +172,90 @@ export default function Hero() {
           </View>
         </View>
       </View>
+
+      {/* Promotion Modal Overlay */}
+      <Modal
+        visible={showPromoModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPromoModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setShowPromoModal(false)} />
+          <View style={styles.modalContent}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderTitleRow}>
+                <MaterialCommunityIcons name="star-four-points" size={20} color="#0EA5B7" />
+                <Text style={styles.modalHeaderTitle}>Ưu Đãi Đặc Biệt</Text>
+              </View>
+              <View style={styles.modalPillBadge}>
+                <Text style={styles.modalPillBadgeText}>{promotions.length} ưu đãi</Text>
+              </View>
+            </View>
+
+            <ScrollView
+              style={styles.modalScroll}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              {promotions.map((promo) => {
+                const id = promo.id || promo._id;
+                const isPercentage = promo.discount_type === 'percentage';
+                const discountText = isPercentage
+                  ? `Giảm ${promo.discount_value}%`
+                  : `Giảm ${(promo.discount_value / 1000)}k`;
+
+                return (
+                  <Pressable
+                    key={id}
+                    style={styles.promoModalCard}
+                    onPress={() => copyToClipboard(promo.promotion_code)}
+                  >
+                    <View style={styles.promoCardTopLine} />
+
+                    <View style={styles.promoCardHeader}>
+                      <View style={styles.modalCodeBadge}>
+                        <MaterialCommunityIcons name="tag-outline" size={12} color="#0284C7" />
+                        <Text style={styles.modalCodeBadgeText}>{promo.promotion_code}</Text>
+                      </View>
+
+                      <View style={styles.modalDiscountBadge}>
+                        <MaterialCommunityIcons name="scissors-cutting" size={11} color="#9333EA" />
+                        <Text style={styles.modalDiscountBadgeText}>{discountText}</Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.modalPromoName} numberOfLines={1}>
+                      {promo.promotion_name || 'Khuyến mãi'}
+                    </Text>
+
+                    {promo.description ? (
+                      <Text style={styles.modalPromoDesc}>
+                        {promo.description}
+                      </Text>
+                    ) : null}
+
+                    <View style={styles.modalCardFooter}>
+                      <Text style={styles.modalMinOrderText}>
+                        Đơn tối thiểu: {new Intl.NumberFormat('vi-VN').format(promo.min_order_amount || 0)}đ
+                      </Text>
+                      <View style={styles.copyButton}>
+                        <MaterialCommunityIcons name="content-copy" size={12} color="#0EA5B7" />
+                        <Text style={styles.copyButtonText}>Sao chép</Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <Pressable style={styles.modalCloseButton} onPress={() => setShowPromoModal(false)}>
+              <Text style={styles.modalCloseButtonText}>Đóng</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -149,24 +296,222 @@ const styles = StyleSheet.create({
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    alignSelf: 'flex-start',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingTop: Platform.OS === 'ios' ? 44 : 30,
     marginBottom: 4,
+    paddingHorizontal: 4,
+  },
+  brandLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   logo: {
-    width: 80,
-    height: 80,
-    marginTop: 30,
+    width: 60,
+    height: 60,
   },
   brandText: {
     color: '#FFFFFF',
-    marginTop: 30, 
     fontSize: 21,
     fontWeight: '900',
     letterSpacing: 0.5,
   },
   brandAccent: {
     color: '#04e6ff',
+  },
+  notificationBtn: {
+    position: 'relative',
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(48, 0, 0, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notificationIcon: {
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  badgeContainer: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    maxHeight: '80%',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 24,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  modalHeaderTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  modalHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  modalPillBadge: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  modalPillBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  modalScroll: {
+    marginHorizontal: -4,
+  },
+  modalScrollContent: {
+    paddingVertical: 4,
+    gap: 12,
+  },
+  promoModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    position: 'relative',
+    overflow: 'hidden',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  promoCardTopLine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 4,
+    backgroundColor: '#0ea5b9',
+  },
+  promoCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  modalCodeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  modalCodeBadgeText: {
+    color: '#0284C7',
+    fontWeight: '700',
+    fontSize: 11,
+  },
+  modalDiscountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FAF5FF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  modalDiscountBadgeText: {
+    color: '#9333EA',
+    fontWeight: '700',
+    fontSize: 11,
+  },
+  modalPromoName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 4,
+  },
+  modalPromoDesc: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  modalCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F8FAFC',
+    borderStyle: 'dashed',
+  },
+  modalMinOrderText: {
+    fontSize: 11,
+    color: '#94A3B8',
+  },
+  copyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  copyButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0EA5B7',
+  },
+  modalCloseButton: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  modalCloseButtonText: {
+    color: '#475569',
+    fontSize: 14,
+    fontWeight: '700',
   },
   stage: {
     flex: 1,

@@ -18,6 +18,7 @@ import {
   Linking,
   Image,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import SignatureScreen, { SignatureViewRef } from 'react-native-signature-canvas';
@@ -179,12 +180,7 @@ export default function HistoryScreen() {
   const handleDownloadPdf = async (checklistId: string) => {
     try {
       const url = bookingService.getChecklistPdfUrl(checklistId);
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert('Lỗi', 'Không thể mở liên kết tải PDF');
-      }
+      await WebBrowser.openBrowserAsync(url);
     } catch (error) {
       console.error('Error opening PDF URL:', error);
       Alert.alert('Lỗi', 'Có lỗi xảy ra khi tải PDF');

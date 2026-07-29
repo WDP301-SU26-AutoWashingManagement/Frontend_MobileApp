@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import SignatureScreen, { SignatureViewRef } from 'react-native-signature-canvas';
@@ -34,6 +36,7 @@ export default function ConfirmHandoverModal({
   const [submitting, setSubmitting] = useState(false);
   const signatureRef = useRef<SignatureViewRef>(null);
   const [signatureAfter, setSignatureAfter] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible && booking) {
@@ -228,12 +231,13 @@ export default function ConfirmHandoverModal({
                   </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
                     {checklist.images.map((img: string, idx: number) => (
-                      <Image
-                        key={idx}
-                        source={{ uri: getImageUrl(img) }}
-                        style={styles.thumbnailImage}
-                        resizeMode="cover"
-                      />
+                      <Pressable key={idx} onPress={() => setSelectedImage(getImageUrl(img))}>
+                        <Image
+                          source={{ uri: getImageUrl(img) }}
+                          style={styles.thumbnailImage}
+                          resizeMode="cover"
+                        />
+                      </Pressable>
                     ))}
                   </ScrollView>
                 </View>
@@ -332,6 +336,20 @@ export default function ConfirmHandoverModal({
             </Pressable>
           </View>
         </View>
+
+        {/* Full screen Image Viewer View */}
+        {selectedImage && (
+          <View style={styles.imageViewerContainer}>
+            <Pressable style={styles.imageViewerCloseBtn} onPress={() => setSelectedImage(null)}>
+              <MaterialCommunityIcons name="close" size={30} color="#FFFFFF" />
+            </Pressable>
+            <Image
+              source={{ uri: selectedImage }}
+              style={styles.imageViewerFull}
+              resizeMode="contain"
+            />
+          </View>
+        )}
       </View>
     </Modal>
   );
@@ -560,5 +578,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  imageViewerContainer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 99999,
+  },
+  imageViewerCloseBtn: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 30,
+    right: 20,
+    zIndex: 100000,
+    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 25,
+  },
+  imageViewerFull: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height,
   },
 });
