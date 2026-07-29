@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, Modal, Pressable, StyleSheet, ActivityIndicator, Image, Alert, ScrollView } from 'react-native';
+import { View, Text, Modal, Pressable, StyleSheet, ActivityIndicator, Image, Alert, ScrollView, TextInput } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { invoiceService } from '../services/invoiceService';
@@ -7,6 +7,26 @@ import { Booking } from '../services/bookingService';
 import { useAuth } from '../hooks/useAuthService';
 import promotionService, { Promotion } from '../services/promotionService';
 import { parseVietQR } from '../utils/vietqr';
+
+const getSuggestions = (total: number) => {
+  const standardBills = [50000, 100000, 200000, 500000];
+  const suggestions: number[] = [];
+  
+  // Add nearest 10k round up if it's not a round number
+  const next10k = Math.ceil(total / 10000) * 10000;
+  if (next10k > total && next10k !== total) {
+    suggestions.push(next10k);
+  }
+  
+  // Add standard bills that are greater than total
+  standardBills.forEach(bill => {
+    if (bill > total && !suggestions.includes(bill)) {
+      suggestions.push(bill);
+    }
+  });
+  
+  return suggestions.slice(0, 4);
+};
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -28,6 +48,7 @@ export default function PaymentModal({ isOpen, onClose, booking, onSuccess }: Pa
   const [selectedPromotionId, setSelectedPromotionId] = useState<string | null>(null);
   const [loadingPromotions, setLoadingPromotions] = useState(false);
   const [bankInfo, setBankInfo] = useState<{ accountName: string, accountNumber: string, bankName: string, addInfo?: string } | null>(null);
+  const [cashInput, setCashInput] = useState<string>('');
 
   useEffect(() => {
     if (paymentMode === 'qr' && invoice?.qr_code) {
@@ -83,11 +104,57 @@ export default function PaymentModal({ isOpen, onClose, booking, onSuccess }: Pa
             return { ...p, calculatedDiscount: Math.round(discount) };
           }).filter(p => p.calculatedDiscount > 0 || (p as any).type === 'bonus_service');
 
+          // Resolve bookingPromoId safely whether string or object
+          let bookingPromoId: string | null = null;
+          const rawBooking = booking as any;
+          if (rawBooking.promotion_id) {
+            if (typeof rawBooking.promotion_id === 'object') {
+              bookingPromoId = rawBooking.promotion_id._id || rawBooking.promotion_id.id || null;
+            } else {
+              bookingPromoId = rawBooking.promotion_id.toString();
+            }
+          } else if (rawBooking.promotion) {
+            bookingPromoId = rawBooking.promotion._id || rawBooking.promotion.id || null;
+          }
+
+          // If booking has promotion_id but not found in filtered withDiscounts, force-add it from raw list
+          if (bookingPromoId) {
+            const promoIdStr = bookingPromoId.toString();
+            const isAlreadyInWithDiscounts = withDiscounts.some(p => (p._id || p.id || '').toString() === promoIdStr);
+            
+            if (!isAlreadyInWithDiscounts) {
+              const rawPromo = list.find(p => (p._id || p.id || '').toString() === promoIdStr);
+              if (rawPromo) {
+                let discount = 0;
+                if ((rawPromo as any).type !== 'bonus_service') {
+                   if (rawPromo.discount_type === 'percentage') {
+                     const raw = priceAfterTier * (rawPromo.discount_value / 100);
+                     discount = Math.min(raw, rawPromo.max_discount_amount || Infinity);
+                   } else {
+                     discount = Math.min(priceAfterTier, rawPromo.discount_value);
+                   }
+                }
+                withDiscounts.push({
+                  ...rawPromo,
+                  calculatedDiscount: Math.round(discount)
+                });
+              }
+            }
+          }
+
           withDiscounts.sort((a, b) => b.calculatedDiscount - a.calculatedDiscount);
           setPromotions(withDiscounts);
 
-          if (withDiscounts.length > 0) {
-             setSelectedPromotionId(withDiscounts[0]._id || withDiscounts[0].id!);
+          if (bookingPromoId) {
+            const promoIdStr = bookingPromoId.toString();
+            const matched = withDiscounts.find(p => (p._id || p.id || '').toString() === promoIdStr);
+            if (matched) {
+              setSelectedPromotionId(matched._id || matched.id!);
+            } else {
+              setSelectedPromotionId(null);
+            }
+          } else {
+            setSelectedPromotionId(null);
           }
         })
         .catch(err => console.error('Failed to load promotions', err))
@@ -102,6 +169,7 @@ export default function PaymentModal({ isOpen, onClose, booking, onSuccess }: Pa
       setStep(1);
       setPromotions([]);
       setSelectedPromotionId(null);
+      setCashInput('');
     }
   }, [isOpen, booking, invoice]);
 
@@ -208,13 +276,23 @@ export default function PaymentModal({ isOpen, onClose, booking, onSuccess }: Pa
             <MaterialCommunityIcons name="close" size={24} color="#64748B" />
           </Pressable>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
-            {step === 2 && !paymentMode && (
-              <Pressable onPress={() => { setStep(1); setInvoice(null); }} style={{ padding: 8, marginRight: 8, marginLeft: -8 }}>
+            {((step === 2 && !paymentMode) || paymentMode === 'cash') && (
+              <Pressable 
+                onPress={() => {
+                  if (paymentMode === 'cash') {
+                    setPaymentMode(null);
+                  } else {
+                    setStep(1);
+                    setInvoice(null);
+                  }
+                }} 
+                style={{ padding: 8, marginRight: 8, marginLeft: -8 }}
+              >
                 <MaterialCommunityIcons name="arrow-left" size={24} color="#64748B" />
               </Pressable>
             )}
-            <Text style={[styles.title, { marginBottom: 0, flex: 1, textAlign: step === 2 && !paymentMode ? 'left' : 'center' }]}>
-              Thanh toán dịch vụ
+            <Text style={[styles.title, { marginBottom: 0, flex: 1, textAlign: ((step === 2 && !paymentMode) || paymentMode === 'cash') ? 'left' : 'center' }]}>
+              {paymentMode === 'cash' ? 'Thanh toán' : 'Thanh toán dịch vụ'}
             </Text>
           </View>
           {step === 1 ? (
@@ -246,6 +324,24 @@ export default function PaymentModal({ isOpen, onClose, booking, onSuccess }: Pa
                 {promotions.length > 0 && (
                   <View style={{ width: '100%', marginTop: 8, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 8 }}>
                     <Text style={[styles.summaryLabel, { marginBottom: 6, fontWeight: '600', color: '#334155' }]}>Khuyến mãi khả dụng:</Text>
+                    
+                    {/* Option: Không áp dụng khuyến mãi */}
+                    <Pressable 
+                      style={[styles.promoItem, selectedPromotionId === null && styles.promoItemSelected]}
+                      onPress={() => setSelectedPromotionId(null)}
+                    >
+                      <MaterialCommunityIcons 
+                        name={selectedPromotionId === null ? "check-circle" : "circle-outline"} 
+                        size={20} 
+                        color={selectedPromotionId === null ? "#06B6D4" : "#CBD5E1"} 
+                      />
+                      <View style={{ flex: 1, marginLeft: 8 }}>
+                        <Text style={[styles.promoName, selectedPromotionId === null && { color: '#06B6D4' }]}>
+                          Không áp dụng khuyến mãi
+                        </Text>
+                      </View>
+                    </Pressable>
+
                     {promotions.map(promo => {
                       const isSelected = selectedPromotionId === (promo._id || promo.id);
                       return (
@@ -295,196 +391,423 @@ export default function PaymentModal({ isOpen, onClose, booking, onSuccess }: Pa
             </View>
           ) : (
             <View style={styles.stepContainer}>
-               <View style={styles.summaryBox}>
-                 <View style={styles.summaryRow}>
-                   <Text style={styles.summaryLabel}>Tổng phí dịch vụ:</Text>
-                   <Text style={styles.summaryVal}>{(booking.base_price ?? booking.final_price ?? 0).toLocaleString('vi-VN')} đ</Text>
-                 </View>
-
-                 {(() => {
-                    const tierDiscountPct = (booking as any).customer_id?.tier_id?.discount_percentage || (booking as any).customer?.tier_id?.discount_percentage || 0;
-                    if (tierDiscountPct > 0) {
-                      const tierDiscountAmount = Math.round((booking.base_price ?? booking.final_price ?? 0) * (tierDiscountPct / 100));
-                      return (
-                        <View style={styles.summaryRow}>
-                          <Text style={[styles.summaryLabel, { color: '#10B981' }]}>Ưu đãi hạng ({tierDiscountPct}%):</Text>
-                          <Text style={[styles.summaryVal, { color: '#10B981' }]}>-{tierDiscountAmount.toLocaleString('vi-VN')} đ</Text>
-                        </View>
-                      );
-                    }
-                    return null;
-                 })()}
-
-                 {(() => {
-                    let pDiscountAmount = 0;
-                    if (invoice) {
-                      const tierDiscountPct = (booking as any).customer_id?.tier_id?.discount_percentage || (booking as any).customer?.tier_id?.discount_percentage || 0;
-                      const tierDiscountAmount = Math.round((booking.base_price ?? booking.final_price ?? 0) * (tierDiscountPct / 100));
-                      pDiscountAmount = invoice.discount_amount - tierDiscountAmount;
-                    } else if (selectedPromotionId) {
-                      const selectedPromo = promotions.find(p => (p._id || p.id) === selectedPromotionId);
-                      pDiscountAmount = selectedPromo ? selectedPromo.calculatedDiscount : 0;
-                    }
+              {paymentMode === 'cash' ? (
+                // --- Cash Payment Calculator Screen ---
+                <View style={{ gap: 16 }}>
+                  {/* Summary Box */}
+                  <View style={styles.summaryBox}>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Khách hàng:</Text>
+                      <Text style={styles.summaryVal}>{booking.vehicle?.license_plate || booking.vehicle_id?.license_plate || 'N/A'}</Text>
+                    </View>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Dịch vụ:</Text>
+                      <Text style={[styles.summaryVal, { flex: 1, textAlign: 'right' }]} numberOfLines={1}>
+                        {booking.services?.map((s: any) => s.service?.service_name || s.service_id?.service_name || 'Rửa xe').join(', ') || 'Rửa xe'}
+                      </Text>
+                    </View>
                     
-                    if (pDiscountAmount > 0) {
-                      return (
-                        <View style={styles.summaryRow}>
-                          <Text style={[styles.summaryLabel, { color: '#06B6D4' }]}>Khuyến mãi:</Text>
-                          <Text style={[styles.summaryVal, { color: '#06B6D4' }]}>-{pDiscountAmount.toLocaleString('vi-VN')} đ</Text>
-                        </View>
-                      );
-                    }
-                    return null;
-                 })()}
+                    <View style={[styles.summaryRow, { marginTop: 4, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 6 }]}>
+                      <Text style={styles.summaryLabel}>Tổng phí dịch vụ:</Text>
+                      <Text style={styles.summaryVal}>{(booking.base_price ?? booking.final_price ?? 0).toLocaleString('vi-VN')} đ</Text>
+                    </View>
 
-                 <View style={[styles.summaryRow, { marginTop: 8, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 12 }]}>
-                   <Text style={[styles.summaryLabel, { fontWeight: '700', color: '#0F172A' }]}>Tổng thanh toán:</Text>
-                   <Text style={styles.summaryTotal}>
-                     {(() => {
-                       if (invoice && invoice.total !== undefined) return invoice.total.toLocaleString('vi-VN');
+                    {(() => {
+                       const tierDiscountPct = (booking as any).customer_id?.tier_id?.discount_percentage || (booking as any).customer?.tier_id?.discount_percentage || 0;
+                       if (tierDiscountPct > 0) {
+                         const tierDiscountAmount = Math.round((booking.base_price ?? booking.final_price ?? 0) * (tierDiscountPct / 100));
+                         return (
+                           <View style={styles.summaryRow}>
+                             <Text style={[styles.summaryLabel, { color: '#10B981' }]}>Ưu đãi hạng ({tierDiscountPct}%):</Text>
+                             <Text style={[styles.summaryVal, { color: '#10B981' }]}>-{tierDiscountAmount.toLocaleString('vi-VN')} đ</Text>
+                           </View>
+                         );
+                       }
+                       return null;
+                    })()}
+
+                    {(() => {
+                       const selectedPromo = promotions.find(p => (p._id || p.id) === selectedPromotionId);
+                       const promoDiscount = selectedPromo ? selectedPromo.calculatedDiscount : 0;
+                       if (promoDiscount > 0) {
+                         return (
+                           <View style={styles.summaryRow}>
+                             <Text style={[styles.summaryLabel, { color: '#06B6D4' }]}>Giảm giá (Khuyến mãi):</Text>
+                             <Text style={[styles.summaryVal, { color: '#06B6D4' }]}>-{promoDiscount.toLocaleString('vi-VN')} đ</Text>
+                           </View>
+                         );
+                       }
+                       return null;
+                    })()}
+
+                    <View style={[styles.summaryRow, { marginTop: 8, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 12 }]}>
+                      <Text style={[styles.summaryLabel, { fontWeight: '700', color: '#0F172A' }]}>Tổng thanh toán:</Text>
+                      <Text style={[styles.summaryTotal, { fontSize: 20 }]}>
+                        {(() => {
+                           const basePrice = booking.base_price ?? booking.final_price ?? 0;
+                           const tierDiscountPct = (booking as any).customer_id?.tier_id?.discount_percentage || (booking as any).customer?.tier_id?.discount_percentage || 0;
+                           const tierDiscountAmount = Math.round(basePrice * (tierDiscountPct / 100));
+                           const selectedPromo = promotions.find(p => (p._id || p.id) === selectedPromotionId);
+                           const promoDiscount = selectedPromo ? selectedPromo.calculatedDiscount : 0;
+                           return Math.max(0, basePrice - tierDiscountAmount - promoDiscount).toLocaleString('vi-VN');
+                        })()} đ
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Instruction banner */}
+                  <View style={styles.cashBanner}>
+                    <View style={styles.cashBannerIconBox}>
+                      <MaterialCommunityIcons name="cash-multiple" size={22} color="#10B981" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cashBannerTitle}>Xác nhận thanh toán tiền mặt</Text>
+                      <Text style={styles.cashBannerSubtitle}>Vui lòng nhập số tiền nhận từ khách để tính tiền thừa.</Text>
+                    </View>
+                  </View>
+
+                  {/* Calculator Fields */}
+                  <View style={{ gap: 12 }}>
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.inputLabel}>SỐ TIỀN KHÁCH ĐƯA</Text>
+                      <View style={styles.textInputWrapper}>
+                        <TextInput
+                          style={styles.textInput}
+                          keyboardType="numeric"
+                          value={(() => {
+                            const parsed = parseFloat(cashInput.replace(/[^0-9]/g, '')) || 0;
+                            return parsed > 0 ? parsed.toLocaleString('vi-VN') : '';
+                          })()}
+                          onChangeText={(text) => {
+                            const cleaned = text.replace(/[^0-9]/g, '');
+                            setCashInput(cleaned);
+                          }}
+                          placeholder="Nhập số tiền..."
+                          placeholderTextColor="#94A3B8"
+                        />
+                        <Text style={styles.currencySuffix}>đ</Text>
+                      </View>
+                    </View>
+
+                    {/* Suggestions */}
+                    <View style={{ gap: 6 }}>
+                      <Text style={styles.suggestionTitle}>GỢI Ý MỆNH GIÁ NHANH</Text>
+                      <View style={styles.suggestionRow}>
+                        {(() => {
+                           const basePrice = booking.base_price ?? booking.final_price ?? 0;
+                           const tierDiscountPct = (booking as any).customer_id?.tier_id?.discount_percentage || (booking as any).customer?.tier_id?.discount_percentage || 0;
+                           const tierDiscountAmount = Math.round(basePrice * (tierDiscountPct / 100));
+                           const selectedPromo = promotions.find(p => (p._id || p.id) === selectedPromotionId);
+                           const promoDiscount = selectedPromo ? selectedPromo.calculatedDiscount : 0;
+                           const totalAmount = Math.max(0, basePrice - tierDiscountAmount - promoDiscount);
+
+                           const suggestions = getSuggestions(totalAmount);
+                           const parsedCash = parseFloat(cashInput.replace(/[^0-9]/g, '')) || 0;
+
+                           return (
+                             <>
+                               <Pressable
+                                 style={[
+                                   styles.suggestionPill,
+                                   parsedCash === totalAmount && styles.suggestionPillSelected
+                                 ]}
+                                 onPress={() => setCashInput(totalAmount.toString())}
+                               >
+                                 <Text style={[
+                                   styles.suggestionText,
+                                   parsedCash === totalAmount && styles.suggestionTextSelected
+                                 ]}>Chẵn tiền</Text>
+                               </Pressable>
+                               
+                               {suggestions.map((val) => (
+                                 <Pressable
+                                   key={val}
+                                   style={[
+                                     styles.suggestionPill,
+                                     parsedCash === val && styles.suggestionPillSelected
+                                   ]}
+                                   onPress={() => setCashInput(val.toString())}
+                                 >
+                                   <Text style={[
+                                     styles.suggestionText,
+                                     parsedCash === val && styles.suggestionTextSelected
+                                   ]}>
+                                     {val.toLocaleString('vi-VN')}
+                                   </Text>
+                                 </Pressable>
+                               ))}
+                             </>
+                           );
+                        })()}
+                      </View>
+                    </View>
+
+                    {/* Change to return */}
+                    {(() => {
                        const basePrice = booking.base_price ?? booking.final_price ?? 0;
                        const tierDiscountPct = (booking as any).customer_id?.tier_id?.discount_percentage || (booking as any).customer?.tier_id?.discount_percentage || 0;
                        const tierDiscountAmount = Math.round(basePrice * (tierDiscountPct / 100));
                        const selectedPromo = promotions.find(p => (p._id || p.id) === selectedPromotionId);
                        const promoDiscount = selectedPromo ? selectedPromo.calculatedDiscount : 0;
-                       return Math.max(0, basePrice - tierDiscountAmount - promoDiscount).toLocaleString('vi-VN');
-                     })()} đ
-                   </Text>
-                 </View>
-               </View>
+                       const totalAmount = Math.max(0, basePrice - tierDiscountAmount - promoDiscount);
 
-              {!paymentMode ? (
-                <View style={styles.paymentOptions}>
-                  <Pressable 
-                    style={[styles.btnOption, styles.btnCash]}
-                    onPress={handleConfirmCash}
-                    disabled={loading}
-                  >
-                    {loading ? <ActivityIndicator color="#10B981" /> : (
-                      <>
-                        <MaterialCommunityIcons name="cash" size={24} color="#10B981" />
-                        <Text style={styles.btnCashText}>Tiền mặt</Text>
-                      </>
-                    )}
-                  </Pressable>
+                       const parsedCash = parseFloat(cashInput.replace(/[^0-9]/g, '')) || 0;
+                       const changeAmount = Math.max(0, parsedCash - totalAmount);
 
-                  <Pressable 
-                    style={[styles.btnOption, styles.btnQR]}
-                    onPress={handleCreateQR}
-                    disabled={loading}
-                  >
-                     {loading ? <ActivityIndicator color="#06B6D4" /> : (
-                       <>
-                         <MaterialCommunityIcons name="qrcode-scan" size={24} color="#06B6D4" />
-                         <Text style={styles.btnQRText}>Chuyển khoản (QR)</Text>
-                       </>
-                     )}
-                  </Pressable>
-                </View>
-              ) : paymentMode === 'qr' && invoice && (
-                <View style={styles.qrContainerFull}>
-                  <View style={styles.qrInstructionHeader}>
-                     <MaterialCommunityIcons name="lightbulb-on-outline" size={20} color="#475569" style={{ marginRight: 8 }} />
-                     <Text style={styles.qrInstructionText}>
-                        Mở App Ngân hàng bất kỳ để <Text style={{ fontWeight: '700', color: '#0F172A' }}>quét mã VietQR</Text> hoặc <Text style={{ fontWeight: '700', color: '#0F172A' }}>chuyển khoản</Text> chính xác số tiền, nội dung bên dưới
-                     </Text>
+                       return (
+                         <View style={styles.returnContainer}>
+                           <Text style={styles.returnLabel}>Tiền thừa trả khách:</Text>
+                           <Text style={styles.returnVal}>
+                             {changeAmount.toLocaleString('vi-VN')} đ
+                           </Text>
+                         </View>
+                       );
+                    })()}
                   </View>
-                  <View style={styles.qrDetailsWrapper}>
-                     <View style={styles.qrLeftCol}>
-                        <View style={styles.qrLogoHeader}>
-                           <Text style={{ color: '#E11D48', fontWeight: '900', fontSize: 18 }}>Viet</Text>
-                           <Text style={{ color: '#1E40AF', fontWeight: '900', fontSize: 18 }}>QR</Text>
-                           <View style={{ backgroundColor: '#FBBF24', borderRadius: 4, paddingHorizontal: 4, marginLeft: 4 }}>
-                              <Text style={{ color: '#0F172A', fontWeight: '700', fontSize: 10 }}>PRO</Text>
+
+                  {/* Buttons */}
+                  <View style={styles.buttonRow}>
+                    <Pressable style={styles.btnSecondary} onPress={() => setPaymentMode(null)}>
+                      <Text style={styles.btnSecondaryText}>Quay lại</Text>
+                    </Pressable>
+                    <Pressable 
+                      style={[
+                        styles.btnPrimaryGreen, 
+                        (parseFloat(cashInput.replace(/[^0-9]/g, '')) || 0) < 
+                        (() => {
+                           const basePrice = booking.base_price ?? booking.final_price ?? 0;
+                           const tierDiscountPct = (booking as any).customer_id?.tier_id?.discount_percentage || (booking as any).customer?.tier_id?.discount_percentage || 0;
+                           const tierDiscountAmount = Math.round(basePrice * (tierDiscountPct / 100));
+                           const selectedPromo = promotions.find(p => (p._id || p.id) === selectedPromotionId);
+                           const promoDiscount = selectedPromo ? selectedPromo.calculatedDiscount : 0;
+                           return Math.max(0, basePrice - tierDiscountAmount - promoDiscount);
+                        })() && styles.btnDisabled
+                      ]} 
+                      onPress={handleConfirmCash}
+                      disabled={
+                        loading || 
+                        (parseFloat(cashInput.replace(/[^0-9]/g, '')) || 0) < 
+                        (() => {
+                           const basePrice = booking.base_price ?? booking.final_price ?? 0;
+                           const tierDiscountPct = (booking as any).customer_id?.tier_id?.discount_percentage || (booking as any).customer?.tier_id?.discount_percentage || 0;
+                           const tierDiscountAmount = Math.round(basePrice * (tierDiscountPct / 100));
+                           const selectedPromo = promotions.find(p => (p._id || p.id) === selectedPromotionId);
+                           const promoDiscount = selectedPromo ? selectedPromo.calculatedDiscount : 0;
+                           return Math.max(0, basePrice - tierDiscountAmount - promoDiscount);
+                        })()
+                      }
+                    >
+                      {loading ? (
+                        <ActivityIndicator color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.btnPrimaryGreenText}>Xác nhận thanh toán</Text>
+                      )}
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.summaryBox}>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Tổng phí dịch vụ:</Text>
+                      <Text style={styles.summaryVal}>{(booking.base_price ?? booking.final_price ?? 0).toLocaleString('vi-VN')} đ</Text>
+                    </View>
+
+                    {(() => {
+                       const tierDiscountPct = (booking as any).customer_id?.tier_id?.discount_percentage || (booking as any).customer?.tier_id?.discount_percentage || 0;
+                       if (tierDiscountPct > 0) {
+                         const tierDiscountAmount = Math.round((booking.base_price ?? booking.final_price ?? 0) * (tierDiscountPct / 100));
+                         return (
+                           <View style={styles.summaryRow}>
+                             <Text style={[styles.summaryLabel, { color: '#10B981' }]}>Ưu đãi hạng ({tierDiscountPct}%):</Text>
+                             <Text style={[styles.summaryVal, { color: '#10B981' }]}>-{tierDiscountAmount.toLocaleString('vi-VN')} đ</Text>
                            </View>
-                        </View>
-                        <View style={styles.qrImageBorder}>
-                           {invoice.qr_code && invoice.qr_code.startsWith('data:image') ? (
-                             <Image source={{ uri: invoice.qr_code }} style={styles.qrImage} />
-                           ) : invoice.qr_code ? (
-                              <Image source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(invoice.qr_code)}` }} style={styles.qrImage} />
-                           ) : (
-                             <View style={[styles.qrImage, { justifyContent: 'center', alignItems: 'center' }]}>
-                               <ActivityIndicator size="large" color="#06B6D4" />
-                             </View>
-                           )}
-                        </View>
-                        <View style={styles.qrBankLabel}>
-                           <Text style={{ color: '#1E40AF', fontStyle: 'italic', fontSize: 12, fontWeight: '600' }}>napas 247</Text>
-                           <View style={{ width: 1, height: 12, backgroundColor: '#CBD5E1', marginHorizontal: 8 }} />
-                           <Text style={{ color: '#2563EB', fontSize: 12, fontWeight: '600' }}>{bankInfo?.bankName || 'BANK'}</Text>
-                        </View>
-                     </View>
+                         );
+                       }
+                       return null;
+                    })()}
 
-                     <View style={styles.qrRightCol}>
-                        {bankInfo ? (
-                           <>
-                              <View style={styles.qrDetailRowTop}>
-                                 <View style={styles.qrBankAvatar}>
-                                    <Text style={styles.qrBankAvatarText}>{bankInfo.bankName.substring(0, 3)}</Text>
-                                 </View>
-                                 <View>
-                                    <Text style={styles.qrDetailLabel}>Ngân hàng</Text>
-                                    <Text style={styles.qrBankNameText}>{bankInfo.bankName}</Text>
-                                 </View>
-                              </View>
-
-                              <View style={styles.qrDetailRow}>
-                                 <Text style={styles.qrDetailLabel}>Chủ tài khoản:</Text>
-                                 <Text style={styles.qrDetailValUpper}>{bankInfo.accountName || 'KHUU TRONG QUAN'}</Text>
-                              </View>
-
-                              <View style={styles.qrDetailRow}>
-                                 <Text style={styles.qrDetailLabel}>Số tài khoản:</Text>
-                                 <View style={styles.qrValWithCopy}>
-                                    <Text style={styles.qrDetailVal}>{bankInfo.accountNumber}</Text>
-                                    <Pressable style={styles.qrCopyBtn} onPress={() => { Clipboard.setStringAsync(bankInfo.accountNumber); Alert.alert('Đã copy', 'Số tài khoản đã được copy') }}>
-                                       <Text style={styles.qrCopyBtnText}>Sao chép</Text>
-                                    </Pressable>
-                                 </View>
-                              </View>
-
-                              <View style={styles.qrDetailRow}>
-                                 <Text style={styles.qrDetailLabel}>Số tiền:</Text>
-                                 <View style={styles.qrValWithCopy}>
-                                    <Text style={styles.qrDetailVal}>{(invoice.total || 0).toLocaleString('vi-VN')} vnd</Text>
-                                    <Pressable style={styles.qrCopyBtn} onPress={() => { Clipboard.setStringAsync((invoice.total || 0).toString()); Alert.alert('Đã copy', 'Số tiền đã được copy') }}>
-                                       <Text style={styles.qrCopyBtnText}>Sao chép</Text>
-                                    </Pressable>
-                                 </View>
-                              </View>
-
-                              <View style={styles.qrDetailRow}>
-                                 <Text style={styles.qrDetailLabel}>Nội dung:</Text>
-                                 <View style={styles.qrValWithCopy}>
-                                    <Text style={styles.qrDetailVal}>{bankInfo.addInfo || invoice.order_code}</Text>
-                                    <Pressable style={styles.qrCopyBtn} onPress={() => { Clipboard.setStringAsync((bankInfo.addInfo || invoice.order_code)?.toString() || ''); Alert.alert('Đã copy', 'Nội dung chuyển khoản đã được copy') }}>
-                                       <Text style={styles.qrCopyBtnText}>Sao chép</Text>
-                                    </Pressable>
-                                 </View>
-                              </View>
-                           </>
-                        ) : (
-                           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                              <ActivityIndicator size="small" color="#CBD5E1" />
-                              <Text style={{ color: '#64748B', fontSize: 12, marginTop: 8 }}>Đang giải mã thông tin...</Text>
+                    {(() => {
+                       let pDiscountAmount = 0;
+                       if (invoice) {
+                         const tierDiscountPct = (booking as any).customer_id?.tier_id?.discount_percentage || (booking as any).customer?.tier_id?.discount_percentage || 0;
+                         const tierDiscountAmount = Math.round((booking.base_price ?? booking.final_price ?? 0) * (tierDiscountPct / 100));
+                         pDiscountAmount = invoice.discount_amount - tierDiscountAmount;
+                       } else if (selectedPromotionId) {
+                         const selectedPromo = promotions.find(p => (p._id || p.id) === selectedPromotionId);
+                         pDiscountAmount = selectedPromo ? selectedPromo.calculatedDiscount : 0;
+                       }
+                       
+                       if (pDiscountAmount > 0) {
+                         return (
+                           <View style={styles.summaryRow}>
+                             <Text style={[styles.summaryLabel, { color: '#06B6D4' }]}>Khuyến mãi:</Text>
+                             <Text style={[styles.summaryVal, { color: '#06B6D4' }]}>-{pDiscountAmount.toLocaleString('vi-VN')} đ</Text>
                            </View>
+                         );
+                       }
+                       return null;
+                    })()}
+
+                    <View style={[styles.summaryRow, { marginTop: 8, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 12 }]}>
+                      <Text style={[styles.summaryLabel, { fontWeight: '700', color: '#0F172A' }]}>Tổng thanh toán:</Text>
+                      <Text style={styles.summaryTotal}>
+                        {(() => {
+                          if (invoice && invoice.total !== undefined) return invoice.total.toLocaleString('vi-VN');
+                          const basePrice = booking.base_price ?? booking.final_price ?? 0;
+                          const tierDiscountPct = (booking as any).customer_id?.tier_id?.discount_percentage || (booking as any).customer?.tier_id?.discount_percentage || 0;
+                          const tierDiscountAmount = Math.round(basePrice * (tierDiscountPct / 100));
+                          const selectedPromo = promotions.find(p => (p._id || p.id) === selectedPromotionId);
+                          const promoDiscount = selectedPromo ? selectedPromo.calculatedDiscount : 0;
+                          return Math.max(0, basePrice - tierDiscountAmount - promoDiscount).toLocaleString('vi-VN');
+                        })()} đ
+                      </Text>
+                    </View>
+                  </View>
+
+                  {!paymentMode ? (
+                    <View style={styles.paymentOptions}>
+                      <Pressable 
+                        style={[styles.btnOption, styles.btnCash]}
+                        onPress={() => {
+                          setPaymentMode('cash');
+                          const basePrice = booking.base_price ?? booking.final_price ?? 0;
+                          const tierDiscountPct = (booking as any).customer_id?.tier_id?.discount_percentage || (booking as any).customer?.tier_id?.discount_percentage || 0;
+                          const tierDiscountAmount = Math.round(basePrice * (tierDiscountPct / 100));
+                          const selectedPromo = promotions.find(p => (p._id || p.id) === selectedPromotionId);
+                          const promoDiscount = selectedPromo ? selectedPromo.calculatedDiscount : 0;
+                          const totalAmount = Math.max(0, basePrice - tierDiscountAmount - promoDiscount);
+                          setCashInput(totalAmount.toString());
+                        }}
+                        disabled={loading}
+                      >
+                        {loading ? <ActivityIndicator color="#10B981" /> : (
+                          <>
+                            <MaterialCommunityIcons name="cash" size={24} color="#10B981" />
+                            <Text style={styles.btnCashText}>Tiền mặt</Text>
+                          </>
                         )}
-                     </View>
-                  </View>
+                      </Pressable>
 
-                  <View style={styles.qrNoteBox}>
-                     <Text style={styles.qrNoteBoxText}>
-                        Lưu ý: Nhập chính xác số tiền <Text style={{ fontWeight: '700', color: '#0F172A' }}>{(invoice.total || 0).toLocaleString('vi-VN')}</Text>, nội dung <Text style={{ fontWeight: '700', color: '#0F172A' }}>{bankInfo?.addInfo || invoice.order_code}</Text> khi chuyển khoản
-                     </Text>
-                  </View>
+                      <Pressable 
+                        style={[styles.btnOption, styles.btnQR]}
+                        onPress={handleCreateQR}
+                        disabled={loading}
+                      >
+                         {loading ? <ActivityIndicator color="#06B6D4" /> : (
+                           <>
+                             <MaterialCommunityIcons name="qrcode-scan" size={24} color="#06B6D4" />
+                             <Text style={styles.btnQRText}>Chuyển khoản (QR)</Text>
+                           </>
+                         )}
+                      </Pressable>
+                    </View>
+                  ) : paymentMode === 'qr' && invoice && (
+                    <View style={styles.qrContainerFull}>
+                      <View style={styles.qrInstructionHeader}>
+                         <MaterialCommunityIcons name="lightbulb-on-outline" size={20} color="#475569" style={{ marginRight: 8 }} />
+                         <Text style={styles.qrInstructionText}>
+                            Mở App Ngân hàng bất kỳ để <Text style={{ fontWeight: '700', color: '#0F172A' }}>quét mã VietQR</Text> hoặc <Text style={{ fontWeight: '700', color: '#0F172A' }}>chuyển khoản</Text> chính xác số tiền, nội dung bên dưới
+                         </Text>
+                      </View>
+                      <View style={styles.qrDetailsWrapper}>
+                         <View style={styles.qrLeftCol}>
+                            <View style={styles.qrLogoHeader}>
+                               <Text style={{ color: '#E11D48', fontWeight: '900', fontSize: 18 }}>Viet</Text>
+                               <Text style={{ color: '#1E40AF', fontWeight: '900', fontSize: 18 }}>QR</Text>
+                               <View style={{ backgroundColor: '#FBBF24', borderRadius: 4, paddingHorizontal: 4, marginLeft: 4 }}>
+                                  <Text style={{ color: '#0F172A', fontWeight: '700', fontSize: 10 }}>PRO</Text>
+                               </View>
+                            </View>
+                            <View style={styles.qrImageBorder}>
+                               {invoice.qr_code && invoice.qr_code.startsWith('data:image') ? (
+                                 <Image source={{ uri: invoice.qr_code }} style={styles.qrImage} />
+                               ) : invoice.qr_code ? (
+                                  <Image source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(invoice.qr_code)}` }} style={styles.qrImage} />
+                               ) : (
+                                 <View style={[styles.qrImage, { justifyContent: 'center', alignItems: 'center' }]}>
+                                   <ActivityIndicator size="large" color="#06B6D4" />
+                                 </View>
+                               )}
+                            </View>
+                            <View style={styles.qrBankLabel}>
+                               <Text style={{ color: '#1E40AF', fontStyle: 'italic', fontSize: 12, fontWeight: '600' }}>napas 247</Text>
+                               <View style={{ width: 1, height: 12, backgroundColor: '#CBD5E1', marginHorizontal: 8 }} />
+                               <Text style={{ color: '#2563EB', fontSize: 12, fontWeight: '600' }}>{bankInfo?.bankName || 'BANK'}</Text>
+                            </View>
+                         </View>
 
-                  <View style={{ padding: 16 }}>
-                     <Pressable style={styles.btnOutline} onPress={handleCancelQR}>
-                       {loading ? <ActivityIndicator color="#EF4444" /> : <Text style={styles.btnOutlineText}>Huỷ mã QR này</Text>}
-                     </Pressable>
-                  </View>
-                </View>
+                         <View style={styles.qrRightCol}>
+                            {bankInfo ? (
+                               <>
+                                  <View style={styles.qrDetailRowTop}>
+                                     <View style={styles.qrBankAvatar}>
+                                        <Text style={styles.qrBankAvatarText}>{bankInfo.bankName.substring(0, 3)}</Text>
+                                     </View>
+                                     <View>
+                                        <Text style={styles.qrDetailLabel}>Ngân hàng</Text>
+                                        <Text style={styles.qrBankNameText}>{bankInfo.bankName}</Text>
+                                     </View>
+                                  </View>
+
+                                  <View style={styles.qrDetailRow}>
+                                     <Text style={styles.qrDetailLabel}>Chủ tài khoản:</Text>
+                                     <Text style={styles.qrDetailValUpper}>{bankInfo.accountName || 'KHUU TRONG QUAN'}</Text>
+                                  </View>
+
+                                  <View style={styles.qrDetailRow}>
+                                     <Text style={styles.qrDetailLabel}>Số tài khoản:</Text>
+                                     <View style={styles.qrValWithCopy}>
+                                        <Text style={styles.qrDetailVal}>{bankInfo.accountNumber}</Text>
+                                        <Pressable style={styles.qrCopyBtn} onPress={() => { Clipboard.setStringAsync(bankInfo.accountNumber); Alert.alert('Đã copy', 'Số tài khoản đã được copy') }}>
+                                           <Text style={styles.qrCopyBtnText}>Sao chép</Text>
+                                        </Pressable>
+                                     </View>
+                                  </View>
+
+                                  <View style={styles.qrDetailRow}>
+                                     <Text style={styles.qrDetailLabel}>Số tiền:</Text>
+                                     <View style={styles.qrValWithCopy}>
+                                        <Text style={styles.qrDetailVal}>{(invoice.total || 0).toLocaleString('vi-VN')} vnd</Text>
+                                        <Pressable style={styles.qrCopyBtn} onPress={() => { Clipboard.setStringAsync((invoice.total || 0).toString()); Alert.alert('Đã copy', 'Số tiền đã được copy') }}>
+                                           <Text style={styles.qrCopyBtnText}>Sao chép</Text>
+                                        </Pressable>
+                                     </View>
+                                  </View>
+
+                                  <View style={styles.qrDetailRow}>
+                                     <Text style={styles.qrDetailLabel}>Nội dung:</Text>
+                                     <View style={styles.qrValWithCopy}>
+                                        <Text style={styles.qrDetailVal}>{bankInfo.addInfo || invoice.order_code}</Text>
+                                        <Pressable style={styles.qrCopyBtn} onPress={() => { Clipboard.setStringAsync((bankInfo.addInfo || invoice.order_code)?.toString() || ''); Alert.alert('Đã copy', 'Nội dung chuyển khoản đã được copy') }}>
+                                           <Text style={styles.qrCopyBtnText}>Sao chép</Text>
+                                        </Pressable>
+                                     </View>
+                                  </View>
+                               </>
+                            ) : (
+                               <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                                  <ActivityIndicator size="small" color="#CBD5E1" />
+                                  <Text style={{ color: '#64748B', fontSize: 12, marginTop: 8 }}>Đang giải mã thông tin...</Text>
+                               </View>
+                            )}
+                         </View>
+                      </View>
+
+                      <View style={styles.qrNoteBox}>
+                         <Text style={styles.qrNoteBoxText}>
+                            Lưu ý: Nhập chính xác số tiền <Text style={{ fontWeight: '700', color: '#0F172A' }}>{(invoice.total || 0).toLocaleString('vi-VN')}</Text>, nội dung <Text style={{ fontWeight: '700', color: '#0F172A' }}>{bankInfo?.addInfo || invoice.order_code}</Text> khi chuyển khoản
+                         </Text>
+                      </View>
+
+                      <View style={{ padding: 16 }}>
+                         <Pressable style={styles.btnOutline} onPress={handleCancelQR}>
+                           {loading ? <ActivityIndicator color="#EF4444" /> : <Text style={styles.btnOutlineText}>Huỷ mã QR này</Text>}
+                         </Pressable>
+                      </View>
+                    </View>
+                  )}
+                </>
               )}
             </View>
           )}
@@ -779,5 +1102,151 @@ const styles = StyleSheet.create({
   btnOutlineText: {
     color: '#EF4444',
     fontWeight: '600'
+  },
+  cashBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+    padding: 12,
+    borderRadius: 12,
+    gap: 12,
+  },
+  cashBannerIconBox: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#DCFCE7',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cashBannerTitle: {
+    fontWeight: '700',
+    color: '#15803D',
+    fontSize: 14,
+  },
+  cashBannerSubtitle: {
+    fontSize: 11,
+    color: '#166534',
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  inputContainer: {
+    gap: 6,
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  textInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    backgroundColor: '#FFF',
+    paddingHorizontal: 16,
+    height: 52,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#0F172A',
+    padding: 0,
+    textAlign: 'right',
+  },
+  currencySuffix: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#94A3B8',
+    marginLeft: 8,
+  },
+  suggestionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 0.5,
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  suggestionPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  suggestionPillSelected: {
+    backgroundColor: '#047857',
+    borderColor: '#047857',
+  },
+  suggestionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  suggestionTextSelected: {
+    color: '#FFF',
+  },
+  returnContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  returnLabel: {
+    fontSize: 14,
+    color: '#15803D',
+    fontWeight: '500',
+  },
+  returnVal: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#15803D',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  btnSecondary: {
+    flex: 1,
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnSecondaryText: {
+    color: '#475569',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  btnPrimaryGreen: {
+    flex: 2,
+    backgroundColor: '#047857',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnPrimaryGreenText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700',
   }
 });

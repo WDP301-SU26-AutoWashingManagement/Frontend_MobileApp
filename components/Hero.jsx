@@ -41,6 +41,7 @@ export default function Hero() {
   const [promotions, setPromotions] = useState([]);
   const [showPromoModal, setShowPromoModal] = useState(false);
   const shakeAnimation = useRef(new Animated.Value(0)).current;
+  const pulseAnimation = useRef(new Animated.Value(0)).current;
 
   const player = useVideoPlayer(VIDEO_URI, (p) => {
     p.loop = true;
@@ -100,6 +101,28 @@ export default function Hero() {
     outputRange: ['-18deg', '18deg'],
   });
 
+  useEffect(() => {
+    const startPulse = () => {
+      pulseAnimation.setValue(0);
+      Animated.timing(pulseAnimation, {
+        toValue: 1,
+        duration: 2000,
+        useNativeDriver: true,
+      }).start(() => startPulse());
+    };
+    startPulse();
+  }, []);
+
+  const pulseScale = pulseAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 2.0],
+  });
+
+  const pulseOpacity = pulseAnimation.interpolate({
+    inputRange: [0, 0.7, 1],
+    outputRange: [0.8, 0.3, 0],
+  });
+
   const copyToClipboard = async (code) => {
     await Clipboard.setStringAsync(code);
     Alert.alert('Đã sao chép', `Đã sao chép mã khuyến mãi "${code}" vào bộ nhớ tạm.`);
@@ -130,16 +153,30 @@ export default function Hero() {
             </Text>
           </View>
 
-          <Pressable style={styles.notificationBtn} onPress={() => setShowPromoModal(true)}>
-            <Animated.View style={{ transform: [{ rotate: bellRotation }] }}>
-              <Ionicons name="notifications-outline" size={26} color="#FFFFFF" style={styles.notificationIcon} />
-            </Animated.View>
-            {promotions.length > 0 && (
-              <View style={styles.badgeContainer}>
-                <Text style={styles.badgeText}>{promotions.length}</Text>
-              </View>
-            )}
-          </Pressable>
+          <View style={styles.rightHeaderContainer}>
+            <Text style={styles.promoTextLabel}>Ưu đãi</Text>
+            <View style={styles.notificationWrapper}>
+              <Animated.View
+                style={[
+                  styles.pulseRing,
+                  {
+                    transform: [{ scale: pulseScale }],
+                    opacity: pulseOpacity
+                  }
+                ]}
+              />
+              <Pressable style={styles.notificationBtn} onPress={() => setShowPromoModal(true)}>
+                <Animated.View style={{ transform: [{ rotate: bellRotation }] }}>
+                  <Ionicons name="notifications" size={24} color="#FFFFFF" style={styles.notificationIcon} />
+                </Animated.View>
+                {promotions.length > 0 && (
+                  <View style={styles.badgeContainer}>
+                    <Text style={styles.badgeText}>{promotions.length}</Text>
+                  </View>
+                )}
+              </Pressable>
+            </View>
+          </View>
         </View>
 
         <View style={styles.stage}>
@@ -154,19 +191,16 @@ export default function Hero() {
           </View>
 
           <View style={[styles.statCorner, styles.statTopRight]}>
-            <View style={styles.statLine} />
             <Text style={[styles.statValue, { fontSize: statValSize, lineHeight: statValSize + 2 }]}>+{formatNumber(stats.customers)}</Text>
             <Text style={[styles.statLabel, { fontSize: statLabelSize }]}>khách hàng đang sử dụng</Text>
           </View>
 
           <View style={[styles.statCorner, styles.statBottomLeft]}>
-            <View style={styles.statLine} />
             <Text style={[styles.statValue, { fontSize: statValSize, lineHeight: statValSize + 2 }]}>+{formatNumber(stats.branches)}</Text>
             <Text style={[styles.statLabel, { textAlign: 'left', fontSize: statLabelSize }]}>chi nhánh đang hoạt động</Text>
           </View>
 
           <View style={[styles.statCorner, styles.statBottomRight]}>
-            <View style={styles.statLine} />
             <Text style={[styles.statValue, { fontSize: statValSize, lineHeight: statValSize + 2 }]}>+{formatNumber(stats.bookings)}</Text>
             <Text style={[styles.statLabel, { fontSize: statLabelSize }]}>lượt đặt lịch thành công</Text>
           </View>
@@ -215,33 +249,29 @@ export default function Hero() {
                     <View style={styles.promoCardTopLine} />
 
                     <View style={styles.promoCardHeader}>
-                      <View style={styles.modalCodeBadge}>
-                        <MaterialCommunityIcons name="tag-outline" size={12} color="#0284C7" />
-                        <Text style={styles.modalCodeBadgeText}>{promo.promotion_code}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 8 }}>
+                        <View style={styles.modalCodeBadge}>
+                          <Text style={styles.modalCodeBadgeText}>{promo.promotion_code}</Text>
+                        </View>
+                        <Text style={styles.modalPromoName} numberOfLines={1}>
+                          {promo.promotion_name || 'Khuyến mãi'}
+                        </Text>
                       </View>
 
                       <View style={styles.modalDiscountBadge}>
-                        <MaterialCommunityIcons name="scissors-cutting" size={11} color="#9333EA" />
                         <Text style={styles.modalDiscountBadgeText}>{discountText}</Text>
                       </View>
                     </View>
 
-                    <Text style={styles.modalPromoName} numberOfLines={1}>
-                      {promo.promotion_name || 'Khuyến mãi'}
-                    </Text>
-
-                    {promo.description ? (
-                      <Text style={styles.modalPromoDesc}>
-                        {promo.description}
-                      </Text>
-                    ) : null}
-
                     <View style={styles.modalCardFooter}>
-                      <Text style={styles.modalMinOrderText}>
-                        Đơn tối thiểu: {new Intl.NumberFormat('vi-VN').format(promo.min_order_amount || 0)}đ
-                      </Text>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.modalPromoDesc} numberOfLines={1}>
+                          {promo.description || 'Ưu đãi đặt lịch đặc biệt'}
+                          {promo.min_order_amount > 0 && ` • Đơn từ ${new Intl.NumberFormat('vi-VN').format(promo.min_order_amount / 1000)}k`}
+                        </Text>
+                      </View>
                       <View style={styles.copyButton}>
-                        <MaterialCommunityIcons name="content-copy" size={12} color="#0EA5B7" />
+                        <MaterialCommunityIcons name="content-copy" size={11} color="#0EA5B7" style={{ marginRight: 2 }} />
                         <Text style={styles.copyButtonText}>Sao chép</Text>
                       </View>
                     </View>
@@ -320,16 +350,53 @@ const styles = StyleSheet.create({
   brandAccent: {
     color: '#04e6ff',
   },
-  notificationBtn: {
+  rightHeaderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  promoTextLabel: {
+    color: '#0cf56dff',
+    fontSize: 12,
+    fontWeight: '800',
+    backgroundColor: 'rgba(21, 99, 53, 0.98)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(37, 238, 114, 0.8)',
+    overflow: 'hidden',
+    letterSpacing: 0.5,
+  },
+  notificationWrapper: {
     position: 'relative',
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(48, 0, 0, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
   },
+  pulseRing: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#0ed467ff',
+  },
+  notificationBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#0aee62ff',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#0ad37fff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    elevation: 8,
+  },
   notificationIcon: {
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
@@ -337,18 +404,20 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -4,
     right: -4,
-    backgroundColor: '#EF4444',
+    backgroundColor: '#FFFFFF',
     borderRadius: 10,
     minWidth: 18,
     height: 18,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 4,
+    borderWidth: 1,
+    borderColor: '#035a19ff',
   },
   badgeText: {
-    color: '#FFFFFF',
+    color: '#0a8332ff',
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   modalOverlay: {
     flex: 1,
@@ -362,13 +431,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
-    maxHeight: '80%',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 20,
+    maxHeight: '65%',
     shadowColor: '#0F172A',
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
     shadowOffset: { width: 0, height: -4 },
     elevation: 24,
   },
@@ -376,8 +445,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingBottom: 12,
+    marginBottom: 12,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
@@ -387,18 +456,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   modalHeaderTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
     color: '#0F172A',
   },
   modalPillBadge: {
     backgroundColor: '#F1F5F9',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 20,
   },
   modalPillBadgeText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: '#64748B',
   },
@@ -406,82 +475,76 @@ const styles = StyleSheet.create({
     marginHorizontal: -4,
   },
   modalScrollContent: {
-    paddingVertical: 4,
-    gap: 12,
+    paddingVertical: 2,
+    gap: 8,
   },
   promoModalCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    padding: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     position: 'relative',
     overflow: 'hidden',
     shadowColor: '#0F172A',
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   promoCardTopLine: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 4,
+    height: 3,
     backgroundColor: '#0ea5b9',
   },
   promoCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 6,
   },
   modalCodeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#E0F2FE',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   modalCodeBadgeText: {
     color: '#0284C7',
     fontWeight: '700',
-    fontSize: 11,
+    fontSize: 10,
   },
   modalDiscountBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#FAF5FF',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   modalDiscountBadgeText: {
     color: '#9333EA',
     fontWeight: '700',
-    fontSize: 11,
+    fontSize: 10,
   },
   modalPromoName: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '700',
     color: '#0F172A',
-    marginBottom: 4,
+    flex: 1,
   },
   modalPromoDesc: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748B',
-    lineHeight: 18,
-    marginBottom: 12,
+    lineHeight: 16,
   },
   modalCardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 10,
+    paddingTop: 6,
     borderTopWidth: 1,
     borderTopColor: '#F8FAFC',
     borderStyle: 'dashed',
@@ -493,24 +556,24 @@ const styles = StyleSheet.create({
   copyButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
   },
   copyButtonText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: '#0EA5B7',
   },
   modalCloseButton: {
     backgroundColor: '#F1F5F9',
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 10,
+    paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 16,
+    marginTop: 12,
   },
   modalCloseButtonText: {
     color: '#475569',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
   stage: {
