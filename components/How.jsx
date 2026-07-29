@@ -50,9 +50,22 @@ export default function HowItWorks() {
         ))}
       </View>
 
-      <View style={styles.notice}>
-        <MaterialCommunityIcons name="calendar-clock" size={18} color="#0369A1" />
-        <Text style={styles.noticeText}>Đặt lịch trong vài phút, hệ thống xác nhận ngay trong ứng dụng.</Text>
+      <View style={styles.noticeCard}>
+        <View style={styles.noticeIconCircle}>
+          <MaterialCommunityIcons name="information-variant" size={20} color="#FFFFFF" />
+        </View>
+        <View style={styles.noticeContent}>
+          <View style={styles.noticeHeader}>
+            <Text style={styles.noticeTitle}>Lưu ý quan trọng khi Đặt lịch</Text>
+            <View style={styles.defaultBadge}>
+              <MaterialCommunityIcons name="check-circle-outline" size={11} color="#2563EB" />
+              <Text style={styles.defaultBadgeText}>Dịch vụ mặc định</Text>
+            </View>
+          </View>
+          <Text style={styles.noticeTextMain}>
+            Mọi lịch hẹn <Text style={{ fontWeight: '700', color: '#0F172A' }}>mặc định bao gồm Dịch vụ rửa xe</Text> (<Text style={styles.priceHighlight}>50.000đ</Text>). Quý khách có thể chọn thêm dịch vụ lẻ hoặc gói Combo tùy nhu cầu.
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -124,21 +137,81 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: '#4D6878',
   },
-  notice: {
-    marginTop: 8,
-    borderRadius: 14,
+  noticeCard: {
+    marginTop: 12,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#B9E6F4',
-    backgroundColor: '#FFFFFF',
+    borderColor: '#E0F2FE',
+    borderLeftWidth: 4,
+    borderLeftColor: '#2563EB',
+    backgroundColor: '#F0F9FF',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 14,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  noticeIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#2563EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  noticeContent: {
+    flex: 1,
+    gap: 6,
+  },
+  noticeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
   },
-  noticeText: {
-    fontSize: 13,
-    color: '#0D3E53',
-    flex: 1,
+  noticeTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  defaultBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#E0F2FE',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  defaultBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#0369A1',
+  },
+  noticeTextMain: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#334155',
+  },
+  priceHighlight: {
+    color: '#2563EB',
+    fontWeight: '800',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 5,
+    borderRadius: 4,
+    borderWidth: 0.5,
+    borderColor: '#BAE6FD',
   },
 });
