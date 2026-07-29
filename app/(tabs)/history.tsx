@@ -19,7 +19,7 @@ import {
   Image,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import SignatureScreen, { SignatureViewRef } from 'react-native-signature-canvas';
 import { useFocusEffect } from '@react-navigation/native';
@@ -86,11 +86,53 @@ const formatBranchAddress = (branch: any) => {
   return parts.length > 0 ? parts.join(', ') : '';
 };
 
+const formatISOToCustom = (iso: string): string => {
+  if (!iso || iso === 'all') return '';
+  const parts = iso.split('-');
+  if (parts.length !== 3) return iso;
+  const yy = parts[0].slice(-2);
+  return `${parts[2]}-${parts[1]}-${yy}`;
+};
+
+const parseCustomDateInput = (input: string): string | null => {
+  if (!input) return null;
+  const normalized = input.trim().replace(/[\/\.\s]/g, '-');
+  const parts = normalized.split('-');
+  if (parts.length !== 3) return null;
+  
+  let dd = parts[0].padStart(2, '0');
+  let mm = parts[1].padStart(2, '0');
+  let yy = parts[2];
+  
+  if (dd.length !== 2 || mm.length !== 2) return null;
+  
+  let yyyy = '';
+  if (yy.length === 2) {
+    yyyy = `20${yy}`;
+  } else if (yy.length === 4) {
+    yyyy = yy;
+  } else {
+    return null;
+  }
+  
+  const day = parseInt(dd, 10);
+  const month = parseInt(mm, 10);
+  const year = parseInt(yyyy, 10);
+  
+  if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+  if (day < 1 || day > 31 || month < 1 || month > 12 || year < 2000 || year > 2100) return null;
+  
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 export default function HistoryScreen() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<BookingTab>('upcoming');
+  const [selectedDate, setSelectedDate] = useState<string>('all');
+  const [showDatePickerModal, setShowDatePickerModal] = useState(false);
+  const [customDateInputText, setCustomDateInputText] = useState('');
 
   const { user } = useAuth();
 
@@ -482,7 +524,13 @@ export default function HistoryScreen() {
     return false;
   };
 
-  const filteredBookings = bookings.filter((b) => matchesTab(b, activeTab));
+  const filteredBookings = bookings.filter((b) => {
+    const tabMatch = matchesTab(b, activeTab);
+    if (!tabMatch) return false;
+    if (selectedDate === 'all') return true;
+    const bDateStr = b.scheduled_at?.split('T')[0];
+    return bDateStr === selectedDate;
+  });
 
   const renderHistoryItem = ({ item }: { item: Booking }) => {
     const statusColor = BOOKING_STATUS_COLORS[item.booking_status] || BOOKING_STATUS_COLORS.pending;
@@ -610,6 +658,29 @@ export default function HistoryScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Lịch sử đặt lịch</Text>
+      </View>
+
+      <View style={styles.dateBarContainer}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <MaterialCommunityIcons name="calendar-month" size={20} color="#06B6D4" />
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
+            Lọc ngày: <Text style={{ color: '#06B6D4', fontWeight: '800' }}>
+              {selectedDate === 'all'
+                ? 'Tất cả các ngày'
+                : selectedDate.split('-').reverse().join('/')}
+            </Text>
+          </Text>
+        </View>
+
+        <Pressable
+          style={styles.changeDateBtn}
+          onPress={() => {
+            setCustomDateInputText(formatISOToCustom(selectedDate));
+            setShowDatePickerModal(true);
+          }}>
+          <Text style={styles.changeDateBtnText}>Đổi ngày</Text>
+          <Ionicons name="chevron-down" size={14} color="#06B6D4" />
+        </Pressable>
       </View>
 
       <View style={styles.tabsWrapper}>
@@ -1601,6 +1672,164 @@ export default function HistoryScreen() {
         </Modal>
       ) : null}
 
+      {/* CUSTOM DATE PICKER MODAL */}
+      {showDatePickerModal && (
+        <Modal
+          visible={showDatePickerModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowDatePickerModal(false)}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+          >
+            <View style={styles.modalOverlay}>
+              <Pressable style={styles.modalBackdrop} onPress={() => setShowDatePickerModal(false)} />
+              <View style={[styles.modalContent, { padding: 20, maxHeight: '85%' }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <Text style={{ fontSize: 18, fontWeight: '800', color: '#0F172A' }}>Chọn ngày lọc lịch</Text>
+                  <Pressable onPress={() => setShowDatePickerModal(false)}>
+                    <Ionicons name="close" size={24} color="#64748B" />
+                  </Pressable>
+                </View>
+
+                <Text style={{ fontSize: 13, color: '#64748B', marginBottom: 10, fontWeight: '600' }}>Chọn nhanh trong danh sách ngày:</Text>
+                
+                <ScrollView style={{ maxHeight: 220, marginBottom: 16 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {(() => {
+                      const dateChips = [];
+                      const isAllSelected = selectedDate === 'all';
+                      
+                      // Add Tất cả chip
+                      dateChips.push(
+                        <Pressable
+                          key="all"
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            borderRadius: 12,
+                            backgroundColor: isAllSelected ? 'rgba(6,182,212,0.12)' : '#F8FAFC',
+                            borderWidth: 1,
+                            borderColor: isAllSelected ? '#06B6D4' : '#E2E8F0',
+                            alignItems: 'center',
+                            minWidth: 70,
+                            height: 44,
+                            justifyContent: 'center',
+                          }}
+                          onPress={() => {
+                            setSelectedDate('all');
+                            setShowDatePickerModal(false);
+                          }}
+                        >
+                          <Text style={{ fontSize: 10, color: '#64748B', fontWeight: '600' }}>Mặc định</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: isAllSelected ? '#06B6D4' : '#0F172A' }}>Tất cả</Text>
+                        </Pressable>
+                      );
+
+                      const today = new Date();
+                      for (let i = -7; i <= 3; i++) {
+                        const d = new Date(today);
+                        d.setDate(today.getDate() + i);
+                        const yyyy = d.getFullYear();
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        const fullDate = `${yyyy}-${mm}-${dd}`;
+                        const label = i === 0 ? 'Hôm nay' : i === -1 ? 'Hôm qua' : i === 1 ? 'Ngày mai' : `${dd}/${mm}`;
+                        const dayOfWeek = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][d.getDay()];
+                        const isSelected = selectedDate === fullDate;
+
+                        dateChips.push(
+                          <Pressable
+                            key={fullDate}
+                            style={{
+                              paddingHorizontal: 12,
+                              paddingVertical: 8,
+                              borderRadius: 12,
+                              backgroundColor: isSelected ? 'rgba(6,182,212,0.12)' : '#F8FAFC',
+                              borderWidth: 1,
+                              borderColor: isSelected ? '#06B6D4' : '#E2E8F0',
+                              alignItems: 'center',
+                              minWidth: 70,
+                              height: 44,
+                              justifyContent: 'center',
+                            }}
+                            onPress={() => {
+                              setSelectedDate(fullDate);
+                              setShowDatePickerModal(false);
+                            }}
+                          >
+                            <Text style={{ fontSize: 10, color: '#64748B', fontWeight: '600' }}>{dayOfWeek}</Text>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: isSelected ? '#06B6D4' : '#0F172A' }}>{label}</Text>
+                          </Pressable>
+                        );
+                      }
+                      return dateChips;
+                    })()}
+                  </View>
+                </ScrollView>
+
+                <Text style={{ fontSize: 13, color: '#64748B', marginBottom: 6, fontWeight: '600' }}>Hoặc nhập ngày tùy chỉnh (DD-MM-YY):</Text>
+                <TextInput
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#CBD5E1',
+                    borderRadius: 12,
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    fontSize: 14,
+                    fontWeight: '600',
+                    color: '#0F172A',
+                    backgroundColor: '#F8FAFC',
+                    marginBottom: 16,
+                  }}
+                  placeholder="Ví dụ: 21-07-26"
+                  placeholderTextColor="#94A3B8"
+                  value={customDateInputText}
+                  onChangeText={setCustomDateInputText}
+                />
+
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <Pressable
+                    style={{
+                      flex: 1,
+                      backgroundColor: '#06B6D4',
+                      paddingVertical: 12,
+                      borderRadius: 12,
+                      alignItems: 'center',
+                    }}
+                    onPress={() => {
+                      const parsed = parseCustomDateInput(customDateInputText);
+                      if (parsed) {
+                        setSelectedDate(parsed);
+                        setShowDatePickerModal(false);
+                      } else {
+                        Alert.alert('Sai định dạng', 'Vui lòng nhập ngày theo định dạng DD-MM-YY (ví dụ: 21-07-26)');
+                      }
+                    }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 14 }}>Áp dụng ngày chọn</Text>
+                  </Pressable>
+                  <Pressable
+                    style={{
+                      backgroundColor: '#F1F5F9',
+                      paddingHorizontal: 16,
+                      paddingVertical: 12,
+                      borderRadius: 12,
+                      alignItems: 'center',
+                    }}
+                    onPress={() => setShowDatePickerModal(false)}
+                  >
+                    <Text style={{ color: '#0F172A', fontWeight: '700', fontSize: 14 }}>Đóng</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      )}
+
     </View>
   );
 }
@@ -2486,5 +2715,38 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#B91C1C',
     flex: 1,
+  },
+  dateBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  changeDateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(6,182,212,0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(6,182,212,0.2)',
+  },
+  changeDateBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#06B6D4',
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
 });

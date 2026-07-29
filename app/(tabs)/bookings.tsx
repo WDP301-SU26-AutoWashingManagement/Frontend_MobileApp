@@ -1548,8 +1548,14 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
                             <Text style={styles.priceValue}>{selectedCombo.finalPrice.toLocaleString('vi-VN')} đ</Text>
                           </View>
                         )}
+                        {washingServiceId && !includedServiceIdsInCombo.includes(washingServiceId) && (
+                          <View style={styles.priceItem}>
+                            <Text style={styles.priceLabel}>{washingService?.service_name || 'Dịch vụ rửa xe'} (Mặc định)</Text>
+                            <Text style={styles.priceValue}>{(washingService?.service_price || 0).toLocaleString('vi-VN')} đ</Text>
+                          </View>
+                        )}
                         {selectedServiceIds.map((id) => {
-                          if (includedServiceIdsInCombo.includes(id)) return null;
+                          if (includedServiceIdsInCombo.includes(id) || id === washingServiceId) return null;
                           const svc = individualServices.find((s) => (s._id || s.id) === id);
                           if (!svc) return null;
                           return (
