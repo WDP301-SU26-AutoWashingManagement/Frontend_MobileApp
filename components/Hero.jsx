@@ -23,7 +23,7 @@ const formatNumber = (num) => {
   return num.toString();
 };
 
-export default function Hero() {
+export default function Hero({ refreshKey }) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const isSmall = screenWidth < 375;
 
@@ -61,7 +61,7 @@ export default function Hero() {
       }
     }
     fetchStats();
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     async function loadPromotions() {
@@ -73,7 +73,7 @@ export default function Hero() {
       }
     }
     loadPromotions();
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     if (promotions.length > 0) {

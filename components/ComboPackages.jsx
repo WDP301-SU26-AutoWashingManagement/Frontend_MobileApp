@@ -11,7 +11,7 @@ import { useRouter } from 'expo-router';
 import servicePackageService from '../services/servicePackageService';
 import { useAuth } from '../hooks/useAuthService';
 
-export default function ComboPackages() {
+export default function ComboPackages({ refreshKey }) {
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -44,7 +44,7 @@ export default function ComboPackages() {
       }
     }
     loadPackages();
-  }, []);
+  }, [refreshKey]);
 
   const handleRegisterPress = () => {
     if (isAuthenticated) {

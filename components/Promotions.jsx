@@ -9,7 +9,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import promotionService from '../services/promotionService';
 
-export default function Promotions() {
+export default function Promotions({ refreshKey }) {
   const [promotions, setPromotions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -27,7 +27,7 @@ export default function Promotions() {
       }
     }
     loadPromotions();
-  }, []);
+  }, [refreshKey]);
 
   if (loading) {
     return (

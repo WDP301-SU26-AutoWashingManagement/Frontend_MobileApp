@@ -11,7 +11,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import branchService from '../services/branchService';
 
-export default function Branches() {
+export default function Branches({ refreshKey }) {
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -27,7 +27,7 @@ export default function Branches() {
       }
     }
     loadBranches();
-  }, []);
+  }, [refreshKey]);
 
   const handleDirections = async (branch) => {
     const lat = branch.geo?.latitude;

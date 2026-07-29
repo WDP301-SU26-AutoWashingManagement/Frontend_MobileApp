@@ -35,7 +35,7 @@ const visualMap: Record<string, any> = {
   },
 };
 
-export default function Tiers() {
+export default function Tiers({ refreshKey }: { refreshKey?: number }) {
   const [tiers, setTiers] = useState<Tier[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -52,7 +52,7 @@ export default function Tiers() {
       }
     };
     fetchTiers();
-  }, []);
+  }, [refreshKey]);
 
   return (
     <View style={styles.section}>
