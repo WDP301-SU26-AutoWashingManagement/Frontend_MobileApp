@@ -5,20 +5,8 @@ import { useRouter } from 'expo-router';
 import { makeRedirectUri, Prompt } from 'expo-auth-session';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  Linking,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, Modal, ScrollView, StyleSheet, Text, TextInput, View, Linking,
 } from 'react-native';
-import GoogleSignInButton from '../../components/auth/GoogleSignInButton';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 // Use the SessionUrlProvider to build the proxied auth.expo.io start URL when
@@ -51,12 +39,7 @@ const LOGIN_INITIAL_STATE = {
   remember: true,
 };
 
-const REGISTER_INITIAL_STATE = {
-  name: '',
-  email: '',
-  password: '',
-  confirmPassword: '',
-};
+
 
 const FORGOT_PASSWORD_INITIAL_STATE = {
   email: '',
@@ -69,22 +52,18 @@ type ForgotPasswordStep = 'email' | 'otp' | 'reset';
 
 export default function TabTwoScreen() {
   const router = useRouter();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [loginForm, setLoginForm] = useState(LOGIN_INITIAL_STATE);
-  const [registerForm, setRegisterForm] = useState(REGISTER_INITIAL_STATE);
   const [forgotVisible, setForgotVisible] = useState(false);
   const [forgotStep, setForgotStep] = useState<ForgotPasswordStep>('email');
   const [forgotForm, setForgotForm] = useState(FORGOT_PASSWORD_INITIAL_STATE);
 
   // Password visibility states
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
 
   const {
     login: authLogin,
-    register: authRegister,
     loginWithGoogle: authLoginWithGoogle,
     forgotPassword: authForgotPassword,
     verifyOtp: authVerifyOtp,
@@ -93,8 +72,6 @@ export default function TabTwoScreen() {
     error,
     clearError,
   } = useAuth();
-
-  const isLogin = mode === 'login';
   const isExpoGo = Constants.appOwnership === 'expo';
   const showGoogleLogin = FEATURES.ENABLE_GOOGLE_LOGIN && Platform.OS !== 'web';
   const projectNameForProxy = '@thai5236/HybridWash';
@@ -123,20 +100,11 @@ export default function TabTwoScreen() {
     responseType: 'id_token',
   });
 
-  const passwordsMatch =
-    registerForm.confirmPassword.length > 0 &&
-    registerForm.password === registerForm.confirmPassword;
-
-  const switchMode = (nextMode: 'login' | 'register') => {
-    setMode(nextMode);
-    clearError();
-  };
-
   const openForgotPassword = () => {
     clearError();
     setForgotForm((prev) => ({
       ...FORGOT_PASSWORD_INITIAL_STATE,
-      email: loginForm.email.trim() || registerForm.email.trim() || prev.email,
+      email: loginForm.email.trim() || prev.email,
     }));
     setForgotStep('email');
     setForgotVisible(true);
@@ -149,6 +117,7 @@ export default function TabTwoScreen() {
     clearError();
   };
 
+  // --- CHỨC NĂNG 1: GỬI EMAIL YÊU CẦU QUÊN MẬT KHẨU (NHẬN OTP) ---
   const handleForgotPasswordSubmit = async () => {
     const email = forgotForm.email.trim();
     if (!email) {
@@ -157,7 +126,9 @@ export default function TabTwoScreen() {
     }
 
     try {
+      // Gọi API gửi yêu cầu OTP khôi phục mật khẩu về email người dùng
       await authForgotPassword(email);
+      // Chuyển Modal khôi phục mật khẩu sang Bước 2: Nhập OTP
       setForgotStep('otp');
       Alert.alert('Đã gửi OTP', 'Nếu email tồn tại, mã OTP đã được gửi tới hộp thư của bạn.');
     } catch (err) {
@@ -166,6 +137,7 @@ export default function TabTwoScreen() {
     }
   };
 
+  // --- CHỨC NĂNG 2: XÁC MINH MÃ OTP NHẬP VÀO ---
   const handleVerifyOtpSubmit = async () => {
     const email = forgotForm.email.trim();
     const otp = forgotForm.otp.trim();
@@ -176,7 +148,9 @@ export default function TabTwoScreen() {
     }
 
     try {
+      // Gọi API xác thực OTP từ người dùng
       await authVerifyOtp(email, otp);
+      // Chuyển Modal khôi phục mật khẩu sang Bước 3: Đặt mật khẩu mới
       setForgotStep('reset');
       Alert.alert('OTP hợp lệ', 'Nhập mật khẩu mới để hoàn tất.');
     } catch (err) {
@@ -185,27 +159,32 @@ export default function TabTwoScreen() {
     }
   };
 
+  // --- CHỨC NĂNG 3: ĐẶT MẬT KHẨU MỚI (SAU KHI XÁC MINH OTP THÀNH CÔNG) ---
   const handleResetPasswordSubmit = async () => {
     const email = forgotForm.email.trim();
     const otp = forgotForm.otp.trim();
     const newPassword = forgotForm.newPassword.trim();
     const confirmPassword = forgotForm.confirmPassword.trim();
 
+    // Kiểm tra độ dài mật khẩu mới tối thiểu 6 ký tự
     if (newPassword.length < 6) {
       Alert.alert('Mật khẩu không hợp lệ', 'Mật khẩu mới phải có ít nhất 6 ký tự.');
       return;
     }
 
+    // Đảm bảo mật khẩu nhập lại trùng khớp
     if (newPassword !== confirmPassword) {
       Alert.alert('Mật khẩu không khớp', 'Vui lòng nhập lại đúng mật khẩu mới.');
       return;
     }
 
     try {
+      // Gọi API cập nhật mật khẩu mới của người dùng lên Backend
       await authResetPassword(email, otp, newPassword);
       Alert.alert('Thành công', 'Mật khẩu đã được đặt lại. Vui lòng đăng nhập lại.');
+      // Đóng modal quên mật khẩu
       closeForgotPassword();
-      setMode('login');
+      // Điền sẵn email vừa khôi phục vào ô nhập email đăng nhập
       setLoginForm((prev) => ({ ...prev, email }));
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Đặt lại mật khẩu thất bại';
@@ -213,6 +192,7 @@ export default function TabTwoScreen() {
     }
   };
 
+  // --- CHỨC NĂNG 4: GỬI LẠI MÃ OTP ---
   const handleResendOtp = async () => {
     const email = forgotForm.email.trim();
     if (!email) {
@@ -221,6 +201,7 @@ export default function TabTwoScreen() {
     }
 
     try {
+      // Gửi lại mã OTP mới về email
       await authForgotPassword(email);
       Alert.alert('Đã gửi lại OTP', 'Mã mới đã được gửi tới email của bạn.');
     } catch (err) {
@@ -229,6 +210,7 @@ export default function TabTwoScreen() {
     }
   };
 
+  // --- CHỨC NĂNG 5: ĐĂNG NHẬP THƯỜNG (BẰNG EMAIL VÀ MẬT KHẨU) ---
   const handleLoginSubmit = async () => {
     if (!loginForm.email.trim() || !loginForm.password.trim()) {
       Alert.alert('Thiếu thông tin', 'Vui lòng nhập email và mật khẩu.');
@@ -236,10 +218,11 @@ export default function TabTwoScreen() {
     }
 
     try {
+      // Gọi API đăng nhập bằng Email và Password
       await authLogin(loginForm.email, loginForm.password);
       setLoginForm(LOGIN_INITIAL_STATE);
 
-      // Reset toàn bộ navigation stack, buộc tất cả tabs re-mount
+      // Reset toàn bộ navigation stack của Expo Router, buộc tất cả các Tabs tải lại dữ liệu mới
       router.replace('/(tabs)');
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Đăng nhập thất bại';
@@ -247,46 +230,25 @@ export default function TabTwoScreen() {
     }
   };
 
-  const handleRegisterSubmit = async () => {
-    if (!registerForm.name.trim() || !registerForm.email.trim() || !registerForm.password.trim()) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng điền đầy đủ họ tên, email và mật khẩu.');
-      return;
-    }
 
-    if (registerForm.password.length < 6) {
-      Alert.alert('Mật khẩu không hợp lệ', 'Mật khẩu phải có ít nhất 6 ký tự.');
-      return;
-    }
 
-    if (registerForm.password !== registerForm.confirmPassword) {
-      Alert.alert('Mật khẩu không khớp', 'Vui lòng nhập lại đúng mật khẩu.');
-      return;
-    }
-
-    try {
-      await authRegister(registerForm.email, registerForm.password, registerForm.name);
-      setRegisterForm(REGISTER_INITIAL_STATE);
-
-      // Reset toàn bộ navigation stack, buộc tất cả tabs re-mount
-      router.replace('/(tabs)');
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Đăng ký thất bại';
-      Alert.alert('Lỗi', errorMsg);
-    }
-  };
-
+  // --- LUỒNG XỬ LÝ ĐĂNG NHẬP BẰNG GOOGLE ---
   const handleGoogleLogin = async () => {
+    // 1. Kiểm tra tính khả dụng của tính năng Google Sign-In cấu hình trong app
     if (!showGoogleLogin) {
       Alert.alert('Không hỗ trợ', 'Google Sign-In không khả dụng trên nền tảng này.');
       return;
     }
 
     try {
+      // 2. Đảm bảo cấu hình request Google Auth (do hook Google.useAuthRequest tạo ra) đã sẵn sàng
       if (!request?.url) {
         Alert.alert('Đang tải', 'Vui lòng đợi Google Sign-In khởi tạo xong rồi thử lại.');
         return;
       }
 
+      // 3. Tạo startUrl xác thực Google thông qua Session Proxy của Expo (auth.expo.io)
+      // Điều này bắt buộc khi chạy trong môi trường Expo Go để vượt qua hạn chế HTTPS redirect của Google
       const startUrl = sessionUrlProvider.getStartUrl(request.url, returnUrl, projectNameForProxy);
 
       // eslint-disable-next-line no-console
@@ -298,12 +260,15 @@ export default function TabTwoScreen() {
       // eslint-disable-next-line no-console
       console.log('Auth returnUrl:', returnUrl);
 
+      // 4. Kích hoạt In-app Browser để người dùng chọn tài khoản Google & đăng nhập
       const result = await WebBrowser.openAuthSessionAsync(startUrl, returnUrl);
 
+      // 5. Nếu người dùng tắt trình duyệt giữa chừng hoặc không thành công -> dừng luồng
       if (result.type !== 'success') {
         return;
       }
 
+      // 6. Phân tích URL redirect trả về từ trình duyệt để lấy tham số xác thực
       const parsed = request.parseReturnUrl(result.url);
       console.log('🔐 [GoogleLogin] result.url:', result.url);
       console.log('🔐 [GoogleLogin] parsed:', parsed);
@@ -312,6 +277,7 @@ export default function TabTwoScreen() {
         return;
       }
 
+      // 7. Trích xuất ID Token của Google từ kết quả redirect thành công
       const idToken =
         parsed.params?.id_token ||
         parsed.params?.idToken ||
@@ -323,8 +289,10 @@ export default function TabTwoScreen() {
         return;
       }
 
+      // 8. Gửi ID Token lên Backend của HybridWash để xác thực, đồng bộ tài khoản & lấy Token riêng của hệ thống
       await authLoginWithGoogle(idToken);
-      setMode('login');
+      
+      // 9. Reset biểu mẫu đăng nhập thường và chuyển hướng người dùng vào tab Home
       setLoginForm(LOGIN_INITIAL_STATE);
       router.replace('/(tabs)');
     } catch (err) {
@@ -380,20 +348,13 @@ export default function TabTwoScreen() {
 
           {/* Welcome Titles */}
           <View style={styles.welcomeSection}>
-            <Text style={styles.welcomeTitle}>
-              {isLogin ? 'Chào mừng trở lại!' : ""}
-            </Text>
-            <Text style={styles.welcomeSubtitle}>
-              {isLogin
-                ? 'Đăng nhập vào tài khoản của bạn'
-                : 'Đăng ký tài khoản để sử dụng các tính năng'}
-            </Text>
+            <Text style={styles.welcomeTitle}>Chào mừng trở lại!</Text>
+            <Text style={styles.welcomeSubtitle}>Đăng nhập vào tài khoản của bạn</Text>
           </View>
 
           {/* Form Content */}
           <View style={styles.formCard}>
-            {isLogin ? (
-              /* LOGIN FORM */
+              {/* LOGIN FORM */}
               <View style={styles.formBlock}>
                 {/* Email field */}
                 <View style={styles.fieldGroup}>
@@ -514,113 +475,6 @@ export default function TabTwoScreen() {
                   </Text>
                 ) : null}
               </View>
-            ) : (
-              /* REGISTER FORM */
-              <View style={styles.formBlock}>
-                {/* Full name field */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.inputLabel}>Họ và tên</Text>
-                  <View style={styles.inputWrapper}>
-                    <MaterialCommunityIcons name="account-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                    <TextInput
-                      value={registerForm.name}
-                      onChangeText={(name) => setRegisterForm((prev) => ({ ...prev, name }))}
-                      placeholder="Họ và tên của bạn"
-                      placeholderTextColor="#9CA3AF"
-                      autoCapitalize="words"
-                      editable={!loading}
-                      style={styles.textInput}
-                    />
-                  </View>
-                </View>
-
-                {/* Email field */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.inputLabel}>Email</Text>
-                  <View style={styles.inputWrapper}>
-                    <MaterialCommunityIcons name="email-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                    <TextInput
-                      value={registerForm.email}
-                      onChangeText={(email) => setRegisterForm((prev) => ({ ...prev, email }))}
-                      placeholder="ban@email.com"
-                      placeholderTextColor="#9CA3AF"
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      autoComplete="email"
-                      editable={!loading}
-                      style={styles.textInput}
-                    />
-                  </View>
-                </View>
-
-                {/* Password field */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.inputLabel}>Mật khẩu</Text>
-                  <View style={styles.inputWrapper}>
-                    <MaterialCommunityIcons name="lock-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                    <TextInput
-                      value={registerForm.password}
-                      onChangeText={(password) => setRegisterForm((prev) => ({ ...prev, password }))}
-                      placeholder="••••••••"
-                      placeholderTextColor="#9CA3AF"
-                      secureTextEntry={!showPassword}
-                      autoComplete="new-password"
-                      editable={!loading}
-                      style={styles.textInput}
-                    />
-                    <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}>
-                      <MaterialCommunityIcons
-                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={20}
-                        color="#9CA3AF"
-                      />
-                    </Pressable>
-                  </View>
-                </View>
-
-                {/* Confirm Password field */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.inputLabel}>Xác nhận mật khẩu</Text>
-                  <View style={styles.inputWrapper}>
-                    <MaterialCommunityIcons name="lock-check-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                    <TextInput
-                      value={registerForm.confirmPassword}
-                      onChangeText={(confirmPassword) => setRegisterForm((prev) => ({ ...prev, confirmPassword }))}
-                      placeholder="••••••••"
-                      placeholderTextColor="#9CA3AF"
-                      secureTextEntry={!showConfirmPassword}
-                      autoComplete="new-password"
-                      editable={!loading}
-                      style={styles.textInput}
-                    />
-                    <Pressable onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeButton}>
-                      <MaterialCommunityIcons
-                        name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={20}
-                        color="#9CA3AF"
-                      />
-                    </Pressable>
-                  </View>
-                </View>
-
-                {/* Create Account Button */}
-                <Pressable
-                  onPress={handleRegisterSubmit}
-                  disabled={loading}
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    pressed && !loading && styles.primaryButtonPressed,
-                    loading && styles.primaryButtonDisabled,
-                  ]}>
-                  <Text style={styles.primaryButtonText}>
-                    {loading ? 'Đang xử lý...' : 'TẠO TÀI KHOẢN'}
-                  </Text>
-                </Pressable>
-              </View>
-            )}
-
-            {/* Footer Toggle Mode Link */}
-
           </View>
 
           {/* Forgot Password Modal */}

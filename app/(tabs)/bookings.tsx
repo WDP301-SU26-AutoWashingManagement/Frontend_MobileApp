@@ -89,10 +89,6 @@ export default function BookingsScreen() {
     if (tier && typeof tier === 'object' && 'discount_percentage' in tier) {
       return (tier as any).discount_percentage || 0;
     }
-    const points = user?.role_data?.membership_points ?? 0;
-    if (points >= 600) return 15;
-    if (points >= 300) return 10;
-    if (points >= 100) return 5;
     return 0;
   }, [user]);
 
@@ -179,9 +175,11 @@ export default function BookingsScreen() {
     return [...combos, ...singles].join(', ');
   };
 
+
+  //Tạo tên đầy đủ, chuyên nghiệp của phương tiện
   const getVehicleDisplayName = (vehicle: any) => {
     if (!vehicle) return 'Xe của tôi';
-    
+
     // Look up model
     const modelId = typeof vehicle.model_id === 'object' ? vehicle.model_id?._id : vehicle.model_id;
     const modelObj = models.find(m => m._id === modelId) || (typeof vehicle.model_id === 'object' ? vehicle.model_id : null);
@@ -202,34 +200,38 @@ export default function BookingsScreen() {
     return nameParts.length > 0 ? nameParts.join(' ') : 'Xe của tôi';
   };
 
+
+  //Tách biệt danh sách dịch vụ trong lịch hẹn thành một danh sách các đối tượng có cấu trúc rõ ràng,
   const getBookingServicesList = (services: Booking['services']) => {
     if (!services || !Array.isArray(services)) return [];
     const list: { name: string; isCombo: boolean }[] = [];
-    
+
     services.forEach((s: any) => {
       const pkg = s.service_package_id || s.service_package;
       const svc = s.service_id || s.service;
-      
+
       if (pkg && typeof pkg === 'object') {
         const pName = (pkg as any).package_name || (pkg as any).service_name || (pkg as any).name;
         if (pName && !list.some(item => item.name === pName && item.isCombo)) {
-          list.push({ name: pName, isCombo: true });
+          list.push({ name: pName, isCombo: true }) // nếu là combo
         }
       } else if (svc && typeof svc === 'object') {
         const sName = (svc as any).service_name || (svc as any).name;
         if (sName) {
-          list.push({ name: sName, isCombo: false });
+          list.push({ name: sName, isCombo: false }); // nếu là dịch vụ thường
         }
       }
     });
-    
+
     return list;
   };
 
+
+  //Tính toán giá tiền chi tiết của một đơn đặt lịch
   const renderBookingItem = ({ item }: { item: Booking }) => {
     const basePrice = item.services.reduce((sum, s) => sum + s.price_snapshot, 0);
-    
-    // Get tier discount percentage from populated customer details or fallback to current user's
+
+    // Xác định tỷ lệ giảm giá theo hạng thành viên
     const itemCustomer = item.customer_id as any;
     const itemTier = itemCustomer?.tier_id;
     const bookingTierDiscountPercentage = (itemTier && typeof itemTier === 'object' && 'discount_percentage' in itemTier)
@@ -246,7 +248,7 @@ export default function BookingsScreen() {
     }
 
     const finalPrice = Math.max(0, basePrice - totalDiscount);
-    
+
     const scheduledDate = new Date(item.scheduled_at);
     // Date parts for high-tech calendar ticket
     const dayVal = String(scheduledDate.getDate()).padStart(2, '0');
@@ -259,7 +261,7 @@ export default function BookingsScreen() {
     const canCancel = item.booking_status === 'pending' || item.booking_status === 'confirmed';
     const statusStyles = getStatusStyles(item.booking_status);
     const bookingServices = getBookingServicesList(item.services);
-    
+
     // Resolve populated vehicle_id or vehicle fallback
     const bookingVehicle = item.vehicle_id || item.vehicle;
     const bookingBranch = item.branch_id || item.branch;
@@ -284,10 +286,10 @@ export default function BookingsScreen() {
           <View
             style={[
               styles.statusBadge,
-              { 
-                backgroundColor: statusStyles.bg, 
+              {
+                backgroundColor: statusStyles.bg,
                 borderColor: statusStyles.border,
-                borderWidth: 1 
+                borderWidth: 1
               },
             ]}>
             <Text style={[styles.statusDot, { color: statusStyles.text }]}>●</Text>
@@ -353,20 +355,20 @@ export default function BookingsScreen() {
                 <Text style={styles.detailLabel}>Gói dịch vụ & Dịch vụ lẻ</Text>
                 <View style={styles.servicesWrap}>
                   {bookingServices.map((svc, i) => (
-                    <View 
-                      key={i} 
+                    <View
+                      key={i}
                       style={[
-                        styles.serviceChip, 
+                        styles.serviceChip,
                         svc.isCombo ? styles.comboServiceChip : styles.singleServiceChip
                       ]}
                     >
-                      <MaterialCommunityIcons 
-                        name={svc.isCombo ? "star-face" : "check-circle-outline"} 
-                        size={12} 
-                        color={svc.isCombo ? "#0891B2" : "#64748B"} 
+                      <MaterialCommunityIcons
+                        name={svc.isCombo ? "star-face" : "check-circle-outline"}
+                        size={12}
+                        color={svc.isCombo ? "#0891B2" : "#64748B"}
                         style={{ marginRight: 4 }}
                       />
-                      <Text 
+                      <Text
                         style={[
                           styles.serviceChipText,
                           svc.isCombo ? styles.comboServiceChipText : styles.singleServiceChipText
@@ -399,12 +401,12 @@ export default function BookingsScreen() {
               <Text style={styles.price}>{finalPrice.toLocaleString('vi-VN')} đ</Text>
             )}
           </View>
-          
+
           <View style={styles.actions}>
             {canCancel && (
               <Pressable
                 style={({ pressed }) => [
-                  styles.actionBtn, 
+                  styles.actionBtn,
                   styles.cancelBtn,
                   pressed && { opacity: 0.7 }
                 ]}
@@ -422,7 +424,7 @@ export default function BookingsScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <View>
@@ -536,10 +538,6 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
     if (tier && typeof tier === 'object' && 'discount_percentage' in tier) {
       return (tier as any).discount_percentage || 0;
     }
-    const points = user?.role_data?.membership_points ?? 0;
-    if (points >= 600) return 15;
-    if (points >= 300) return 10;
-    if (points >= 100) return 5;
     return 0;
   }, [user]);
 
@@ -775,7 +773,7 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
       const dd = String(d.getDate()).padStart(2, '0');
       const hh = String(d.getHours()).padStart(2, '0');
       const mm = String(d.getMinutes()).padStart(2, '0');
-      
+
       setSelectedDate(`${yyyy}-${MM}-${dd}`);
       setSelectedTime(`${hh}:${mm}`);
     }
@@ -893,7 +891,7 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
         Alert.alert('Thông báo', 'Vui lòng chọn chi nhánh, phương tiện, ngày và giờ');
         return;
       }
-      
+
       const [year, month, day] = selectedDate.split('-').map(Number);
       const [hour, minute] = selectedTime.split(':').map(Number);
       const scheduledAtLocal = new Date(year, month - 1, day, hour, minute);
@@ -1004,7 +1002,7 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
   const handleSelectCombo = (comboId: string, services: any[]) => {
     setSelectedComboId(prev => {
       const nextComboId = prev === comboId ? '' : comboId;
-      
+
       // Auto deselect individual services that are included in this selected combo
       if (nextComboId) {
         const comboServices = services.map(s => s._id || s.id);
@@ -1076,7 +1074,7 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
             </View>
           ) : (
             <ScrollView style={styles.stepContent} showsVerticalScrollIndicator={false}>
-              
+
               {/* STEP 1: BASIC INFO */}
               {step === 1 && (
                 <View style={styles.formSection}>
@@ -1178,7 +1176,7 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
                         <Text style={styles.aiTitle}>Auto-Pilot Booking</Text>
                       </View>
                       <Text style={styles.aiReason}>"{recommendation.reason}"</Text>
-                      
+
                       <View style={styles.aiDetailsBox}>
                         <View style={styles.aiDetailRow}>
                           <Text style={styles.aiDetailLabel}>Dịch vụ:</Text>
@@ -1211,7 +1209,7 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
                         )}
                       </View>
 
-                      <Pressable 
+                      <Pressable
                         style={({ pressed }) => [styles.aiButton, pressed && { opacity: 0.8 }]}
                         onPress={handleApplyRecommendation}
                       >
@@ -1281,18 +1279,18 @@ function BookingWizardModal({ visible, onClose, onSuccess, router }: BookingWiza
                         {(() => {
                           let openStr = '07:00';
                           let closeStr = '18:30';
-                          
+
                           if (selectedBranch?.operating_time) {
                             const dayOfWeek = selectedDate ? new Date(selectedDate).getDay() : new Date().getDay();
                             const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-                            
+
                             const branchOpen = (isWeekend && selectedBranch.operating_time.weekend_open)
                               ? selectedBranch.operating_time.weekend_open
                               : selectedBranch.operating_time.default_open;
                             const branchClose = (isWeekend && selectedBranch.operating_time.weekend_close)
                               ? selectedBranch.operating_time.weekend_close
                               : selectedBranch.operating_time.default_close;
-                              
+
                             if (branchOpen && branchClose) {
                               openStr = branchOpen;
                               const closeParts = branchClose.split(':');
