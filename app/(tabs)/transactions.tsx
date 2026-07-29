@@ -12,10 +12,10 @@ import {
   TextInput,
   Alert,
   Platform,
-  Linking,
   Dimensions,
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../hooks/useAuthService';
 import bookingService from '../../services/bookingService';
 import branchService, { Branch } from '../../services/branchService';
@@ -233,12 +233,7 @@ export default function TransactionsScreen() {
   const handleDownloadPdf = async (checklistId: string) => {
     try {
       const url = bookingService.getChecklistPdfUrl(checklistId);
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert('Lỗi', 'Không thể mở liên kết tải PDF');
-      }
+      await WebBrowser.openBrowserAsync(url);
     } catch (error) {
       console.error('Error opening PDF URL:', error);
       Alert.alert('Lỗi', 'Có lỗi xảy ra khi tải PDF');

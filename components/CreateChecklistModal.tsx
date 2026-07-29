@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Dimensions,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -45,6 +46,7 @@ export default function CreateChecklistModal({ booking, isOpen, onClose, onSucce
   const [signature, setSignature] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   const ref = useRef<SignatureViewRef>(null);
 
@@ -55,6 +57,10 @@ export default function CreateChecklistModal({ booking, isOpen, onClose, onSucce
   };
 
   const pickImage = async () => {
+    if (images.length >= 10) {
+      Alert.alert('Giới hạn', 'Bạn chỉ có thể chọn tối đa 10 ảnh hiện trạng.');
+      return;
+    }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Quyền truy cập', 'Cần cấp quyền truy cập thư viện ảnh để thêm ảnh.');
@@ -65,11 +71,12 @@ export default function CreateChecklistModal({ booking, isOpen, onClose, onSucce
       allowsEditing: false,
       quality: 0.7,
       allowsMultipleSelection: true,
-      selectionLimit: 5,
+      selectionLimit: 10 - images.length,
     });
     if (!result.canceled) {
       const selectedUris = result.assets.map(asset => asset.uri);
-      setImages([...images, ...selectedUris]);
+      const combined = [...images, ...selectedUris];
+      setImages(combined.slice(0, 10));
     }
   };
 
@@ -188,7 +195,7 @@ export default function CreateChecklistModal({ booking, isOpen, onClose, onSucce
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>
-                <Ionicons name="image-outline" size={16} color="#10B981" /> Hình ảnh hiện trạng
+                <Ionicons name="image-outline" size={16} color="#10B981" /> Hình ảnh hiện trạng (Tối đa 10 ảnh)
               </Text>
               <Pressable style={styles.imagePickBtn} onPress={pickImage}>
                 <Ionicons name="camera-outline" size={24} color="#10B981" />
@@ -198,7 +205,9 @@ export default function CreateChecklistModal({ booking, isOpen, onClose, onSucce
                 <View style={styles.imagesGrid}>
                   {images.map((uri, idx) => (
                     <View key={idx} style={styles.imageContainer}>
-                      <Image source={{ uri }} style={styles.imageThumb} />
+                      <Pressable onPress={() => setSelectedImage(uri)}>
+                        <Image source={{ uri }} style={styles.imageThumb} />
+                      </Pressable>
                       <Pressable style={styles.imageRemove} onPress={() => removeImage(idx)}>
                         <Ionicons name="close-circle" size={20} color="#EF4444" />
                       </Pressable>
@@ -252,6 +261,20 @@ export default function CreateChecklistModal({ booking, isOpen, onClose, onSucce
             </Pressable>
           </View>
         </View>
+
+        {/* Full screen Image Viewer View */}
+        {selectedImage && (
+          <View style={styles.imageViewerContainer}>
+            <Pressable style={styles.imageViewerCloseBtn} onPress={() => setSelectedImage(null)}>
+              <Ionicons name="close" size={30} color="#FFFFFF" />
+            </Pressable>
+            <Image
+              source={{ uri: selectedImage }}
+              style={styles.imageViewerFull}
+              resizeMode="contain"
+            />
+          </View>
+        )}
       </View>
     </Modal>
   );
@@ -416,5 +439,25 @@ const styles = StyleSheet.create({
     color: SURFACE,
     fontSize: 16,
     fontWeight: '700',
+  },
+  imageViewerContainer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 99999,
+  },
+  imageViewerCloseBtn: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 30,
+    right: 20,
+    zIndex: 100000,
+    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 25,
+  },
+  imageViewerFull: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height,
   },
 });

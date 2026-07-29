@@ -12,10 +12,10 @@ import {
   Platform,
   StatusBar,
   ScrollView,
-  Linking,
   TextInput,
   KeyboardAvoidingView,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import CreateChecklistModal from '../../components/CreateChecklistModal';
 import ViewChecklistModal from '../../components/ViewChecklistModal';
 import PaymentModal from '../../components/PaymentModal';
@@ -293,12 +293,7 @@ export default function StaffBookingsScreen() {
   const handleDownloadPdf = async (checklistId: string) => {
     try {
       const url = bookingService.getChecklistPdfUrl(checklistId);
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert('Lỗi', 'Không thể mở liên kết tải PDF');
-      }
+      await WebBrowser.openBrowserAsync(url);
     } catch (error) {
       console.error('Error opening PDF URL:', error);
       Alert.alert('Lỗi', 'Có lỗi xảy ra khi tải PDF');

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,10 +8,11 @@ import {
   ScrollView,
   Platform,
   Image,
-  Linking,
   Alert,
+  Dimensions,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import bookingService from '../services/bookingService';
 
 interface ViewChecklistModalProps {
@@ -26,17 +27,14 @@ const DARK = '#1E293B';
 const GRAY = '#64748B';
 
 export default function ViewChecklistModal({ checklist, isOpen, onClose }: ViewChecklistModalProps) {
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
   if (!isOpen || !checklist) return null;
 
   const handleDownloadPdf = async () => {
     try {
       const url = bookingService.getChecklistPdfUrl(checklist._id);
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert('Lỗi', 'Không thể mở liên kết tải PDF');
-      }
+      await WebBrowser.openBrowserAsync(url);
     } catch (error) {
       console.error('Error opening PDF URL:', error);
       Alert.alert('Lỗi', 'Có lỗi xảy ra khi tải PDF');
@@ -94,7 +92,9 @@ export default function ViewChecklistModal({ checklist, isOpen, onClose }: ViewC
                 </Text>
                 <View style={styles.imagesGrid}>
                   {checklist.images.map((imgUrl: string, idx: number) => (
-                    <Image key={idx} source={{ uri: imgUrl }} style={styles.imageThumb} />
+                    <Pressable key={idx} onPress={() => setSelectedImage(imgUrl)}>
+                      <Image source={{ uri: imgUrl }} style={styles.imageThumb} />
+                    </Pressable>
                   ))}
                 </View>
               </View>
@@ -153,6 +153,20 @@ export default function ViewChecklistModal({ checklist, isOpen, onClose }: ViewC
             </Pressable>
           </View>
         </View>
+
+        {/* Full screen Image Viewer View */}
+        {selectedImage && (
+          <View style={styles.imageViewerContainer}>
+            <Pressable style={styles.imageViewerCloseBtn} onPress={() => setSelectedImage(null)}>
+              <Ionicons name="close" size={30} color="#FFFFFF" />
+            </Pressable>
+            <Image
+              source={{ uri: selectedImage }}
+              style={styles.imageViewerFull}
+              resizeMode="contain"
+            />
+          </View>
+        )}
       </View>
     </Modal>
   );
@@ -304,5 +318,25 @@ const styles = StyleSheet.create({
     color: SURFACE,
     fontSize: 16,
     fontWeight: '700',
+  },
+  imageViewerContainer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 99999,
+  },
+  imageViewerCloseBtn: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 30,
+    right: 20,
+    zIndex: 100000,
+    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 25,
+  },
+  imageViewerFull: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height,
   },
 });
