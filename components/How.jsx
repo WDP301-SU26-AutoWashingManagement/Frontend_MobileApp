@@ -30,7 +30,7 @@ const steps = [
   },
 ];
 
-export default function HowItWorks() {
+export default function HowItWorks({ refreshKey }) {
   const [washPrice, setWashPrice] = useState('50.000đ');
 
   useEffect(() => {
@@ -49,7 +49,7 @@ export default function HowItWorks() {
       }
     };
     fetchWashPrice();
-  }, []);
+  }, [refreshKey]);
 
   return (
     <View style={styles.section}>

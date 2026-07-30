@@ -16,7 +16,7 @@ import { useAuth } from '../hooks/useAuthService';
 
 const { width } = Dimensions.get('window');
 
-export default function IndividualServices() {
+export default function IndividualServices({ refreshKey }) {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
   const [services, setServices] = useState([]);
@@ -40,7 +40,7 @@ export default function IndividualServices() {
       }
     }
     loadData();
-  }, []);
+  }, [refreshKey]);
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat('vi-VN', {
